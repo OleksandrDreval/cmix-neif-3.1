@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 824" width="960" height="824" role="img" aria-labelledby="t d">
+<title id="t">Layout of the metadata block</title>
+<desc id="d">The metadata block of the 2.0 coder stream to scale against the block of 1.0: part A with one record per page in page order, part B with one record per page sorted by revision id, split into B1 and B2; record forms of part A and part B with real records of the stream as byte boxes.</desc>
+<rect x="0.5" y="0.5" width="959" height="823" rx="6" fill="#fcfcfb" stroke="#d9d8d1"/>
+<text x="24" y="34" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="17" fill="#0b0b0b" font-weight="600">Layout of the metadata block</text>
+<text x="24" y="54" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#52514e">3,743,100 B at the head of the coder stream (1.0: 5,164,151 B), behind a stream header of 39 B, two records per page (243,425 pages)</text>
+<rect x="64" y="126" width="293" height="26" fill="#1c5cab"/>
+<text x="66" y="102" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b"><tspan font-weight="600">Part A</tspan><tspan fill="#52514e" dx="7">1.75 MB</tspan></text>
+<text x="66" y="117" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">243,425 records in the order of the pages</text>
+<rect x="359" y="126" width="143.97" height="26" fill="#2a78d6"/>
+<text x="361" y="102" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b"><tspan font-weight="600">Part B1</tspan><tspan fill="#52514e" dx="7">0.86 MB</tspan></text>
+<text x="361" y="117" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">87,813 records</text>
+<rect x="504.98" y="126" width="189.07" height="26" fill="#5598e7"/>
+<text x="506.98" y="102" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b"><tspan font-weight="600">Part B2</tspan><tspan fill="#52514e" dx="7">1.13 MB</tspan></text>
+<text x="506.98" y="117" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">155,612 records</text>
+<text x="54" y="144" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" text-anchor="end" font-weight="600">2.0</text>
+<rect x="702.05" y="126" width="26" height="26" fill="#a56f00"/>
+<text x="734.05" y="138" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b" font-weight="600">census metadata block</text>
+<text x="734.05" y="152" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">follows, 9.28 MB</text>
+<rect x="64" y="160" width="319.78" height="12" fill="#1c5cab" fill-opacity="0.45"/>
+<rect x="385.78" y="160" width="215.38" height="12" fill="#2a78d6" fill-opacity="0.45"/>
+<rect x="603.16" y="160" width="330.84" height="12" fill="#5598e7" fill-opacity="0.45"/>
+<text x="54" y="170" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#52514e" text-anchor="end" font-weight="600">1.0</text>
+<text x="68" y="188" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">1.0: part A 1.91, B1 1.29, B2 1.97 MB</text>
+<text x="361" y="188" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">Part B: sorted by revision id as in 1.0. The names moved to the contributor article.</text>
+<line x1="24" y1="212" x2="936" y2="212" stroke="#e1e0d9" stroke-width="1"/>
+<rect x="24" y="222" width="3" height="16" fill="#2a78d6"/>
+<text x="36" y="234" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b"><tspan font-weight="600">Record of part A</tspan><tspan fill="#52514e" dx="8">page id as a difference to the page before, then the revision id</tspan></text>
+<rect x="24" y="264" width="110" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="43" y="284" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">31</text>
+<text x="24" y="258" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">page id</text>
+<text x="24" y="310" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">+1: page id 1</text>
+<rect x="140" y="264" width="120" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="159" y="284" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">A0</text>
+<text x="186" y="284" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">D9</text>
+<text x="213" y="284" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">DD</text>
+<text x="240" y="284" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">8F</text>
+<text x="140" y="258" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">revision id</text>
+<text x="140" y="310" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">32 89 93 15 = 32,899,315</text>
+<rect x="266" y="264" width="39" height="30" fill="#ecebe6" rx="4" stroke="#b5b4aa" stroke-width="1.2"/>
+<text x="285" y="284" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">0A</text>
+<text x="266" y="258" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">LF</text>
+<text x="325" y="284" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">record 0, the first page of the stream</text>
+<rect x="24" y="356" width="110" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="43" y="376" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">32</text>
+<text x="24" y="350" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">page id</text>
+<text x="24" y="402" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">+2: page id 8</text>
+<rect x="140" y="356" width="39" height="30" fill="#ecebe6" rx="4" stroke="#b5b4aa" stroke-width="1.2"/>
+<text x="159" y="376" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">2B</text>
+<text x="140" y="350" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">mark</text>
+<text x="140" y="402" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">+</text>
+<rect x="185" y="356" width="64" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="204" y="376" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">30</text>
+<text x="185" y="350" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">residual</text>
+<text x="185" y="402" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">0</text>
+<rect x="255" y="356" width="39" height="30" fill="#ecebe6" rx="4" stroke="#b5b4aa" stroke-width="1.2"/>
+<text x="274" y="376" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">0A</text>
+<text x="255" y="350" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">LF</text>
+<text x="314" y="366" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">record 3; a revision id below 17,000,000 (87,813 records)</text>
+<text x="314" y="381" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">is the residual against an interpolation over the nearest</text>
+<text x="314" y="396" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">page ids seen before; here exact: revision id 15,898,943</text>
+<line x1="24" y1="414" x2="936" y2="414" stroke="#e1e0d9" stroke-width="1"/>
+<rect x="24" y="424" width="3" height="16" fill="#2a78d6"/>
+<text x="36" y="436" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b"><tspan font-weight="600">Record of part B1</tspan><tspan fill="#52514e" dx="8">timestamp in six bytes of base 100, then a mark in place of the name</tspan></text>
+<rect x="24" y="466" width="39" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="43" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">82</text>
+<text x="24" y="460" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">year</text>
+<text x="24" y="512" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">2003</text>
+<rect x="69" y="466" width="90" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="88" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">81</text>
+<text x="115" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">91</text>
+<text x="69" y="460" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">day</text>
+<text x="69" y="512" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">25 April</text>
+<rect x="165" y="466" width="93" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="184" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">88</text>
+<text x="211" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">83</text>
+<text x="238" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">92</text>
+<text x="165" y="460" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">second</text>
+<text x="165" y="512" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">22:18:38</text>
+<rect x="264" y="466" width="39" height="30" fill="#ecebe6" rx="4" stroke="#b5b4aa" stroke-width="1.2"/>
+<text x="283" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">09</text>
+<text x="264" y="460" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">tab</text>
+<rect x="309" y="466" width="39" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="328" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">05</text>
+<text x="309" y="460" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">mark</text>
+<text x="309" y="512" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">new name</text>
+<rect x="354" y="466" width="39" height="30" fill="#ecebe6" rx="4" stroke="#b5b4aa" stroke-width="1.2"/>
+<text x="373" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">09</text>
+<text x="354" y="460" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">tab</text>
+<rect x="399" y="466" width="120" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="418" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">37</text>
+<text x="445" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">35</text>
+<text x="472" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">34</text>
+<text x="499" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">33</text>
+<text x="399" y="460" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">user id</text>
+<text x="399" y="512" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">7543</text>
+<rect x="525" y="466" width="39" height="30" fill="#ecebe6" rx="4" stroke="#b5b4aa" stroke-width="1.2"/>
+<text x="544" y="486" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">0A</text>
+<text x="525" y="460" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">LF</text>
+<text x="584" y="476" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">record 1; the name Ams80 is</text>
+<text x="584" y="491" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">line 1 of the contributor article</text>
+<rect x="24" y="546" width="39" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="43" y="566" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">81</text>
+<text x="24" y="540" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">year</text>
+<text x="24" y="592" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">2002</text>
+<rect x="69" y="546" width="90" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="88" y="566" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">82</text>
+<text x="115" y="566" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">BC</text>
+<text x="69" y="540" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">day</text>
+<text x="69" y="592" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">13 September</text>
+<rect x="165" y="546" width="93" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="184" y="566" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">84</text>
+<text x="211" y="566" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">DB</text>
+<text x="238" y="566" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">C2</text>
+<text x="165" y="540" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">second</text>
+<text x="165" y="592" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">13:39:26</text>
+<rect x="264" y="546" width="39" height="30" fill="#ecebe6" rx="4" stroke="#b5b4aa" stroke-width="1.2"/>
+<text x="283" y="566" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">09</text>
+<text x="264" y="540" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">tab</text>
+<rect x="309" y="546" width="39" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="328" y="566" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">03</text>
+<text x="309" y="540" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">mark</text>
+<text x="309" y="592" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">repeated name</text>
+<rect x="354" y="546" width="39" height="30" fill="#ecebe6" rx="4" stroke="#b5b4aa" stroke-width="1.2"/>
+<text x="373" y="566" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">0A</text>
+<text x="354" y="540" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">LF</text>
+<text x="413" y="566" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">record 7; the next line of the contributor article holds the name</text>
+<line x1="24" y1="600" x2="936" y2="600" stroke="#e1e0d9" stroke-width="1"/>
+<rect x="24" y="610" width="3" height="16" fill="#2a78d6"/>
+<text x="36" y="622" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b"><tspan font-weight="600">Record of part B2</tspan><tspan fill="#52514e" dx="8">timestamp as the difference in seconds to the record before, decimal</tspan></text>
+<rect x="24" y="652" width="110" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="43" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">33</text>
+<text x="70" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">39</text>
+<text x="24" y="646" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">difference</text>
+<text x="24" y="698" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">+39 s</text>
+<rect x="140" y="652" width="39" height="30" fill="#ecebe6" rx="4" stroke="#b5b4aa" stroke-width="1.2"/>
+<text x="159" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">09</text>
+<text x="140" y="646" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">tab</text>
+<rect x="185" y="652" width="255" height="30" fill="#e4eefb" rx="4" stroke="#86b6ef" stroke-width="1.2"/>
+<text x="204" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">04</text>
+<text x="231" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">85</text>
+<text x="258" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">81</text>
+<text x="285" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">8F</text>
+<text x="312" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">84</text>
+<text x="339" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">83</text>
+<text x="366" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">8F</text>
+<text x="393" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">84</text>
+<text x="420" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">86</text>
+<text x="185" y="646" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">address</text>
+<text x="185" y="698" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">81.244.63.70</text>
+<rect x="446" y="652" width="39" height="30" fill="#ecebe6" rx="4" stroke="#b5b4aa" stroke-width="1.2"/>
+<text x="465" y="672" font-family="ui-monospace, Consolas, 'Liberation Mono', monospace" font-size="12" fill="#0b0b0b" text-anchor="middle">0A</text>
+<text x="446" y="646" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">LF</text>
+<text x="505" y="662" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">record 87,870; an address stays in</text>
+<text x="505" y="677" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">part B: 04, then two bytes per octet</text>
+<line x1="24" y1="700" x2="936" y2="700" stroke="#e1e0d9" stroke-width="1"/>
+<text x="24" y="722" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b"><tspan font-weight="600">Base 100.</tspan> One byte per two decimal digits: 0x80 + value.</text>
+<text x="24" y="737" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b"><tspan font-weight="600">Marks.</tspan> 19,506 records carry 05 (a name that appears for the first time, its user id behind it), 185,891 carry 03 (a repeated name).</text>
+<text x="24" y="752" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">Each mark stands for the next line of the contributor article in the text start.</text>
+<text x="24" y="767" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b"><tspan font-weight="600">In place.</tspan> 35,615 records keep an address, 2,413 keep their name in part B.</text>
+<text x="24" y="782" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b"><tspan font-weight="600">Forecast.</tspan> In front of every record of part B a forecast of its timestamp is fed to the models; it is not coded. From</text>
+<text x="24" y="797" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">record 87,813 on it follows the slope of the last records.</text>
+</svg>

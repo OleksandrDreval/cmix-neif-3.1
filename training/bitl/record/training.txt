@@ -1,0 +1,52 @@
+Record of the BITLSTM weights of cmix-neif-2.0 (three weight sets, 32 cells, bfloat16, NBLB version 2)
+
+Trace
+  trace run          build line bitl/trace/features_trace.txt (development tree, trace writer on),
+                     -e enwik9 with the transformer weights of this entry (container format NP, the same
+                     weights as the shipped NP2 container in another order of some neuron groups)
+  coder stream       501,062,281 B, sha256 c35d3073...
+  records            1,694,239,343 (one per bit the BITLSTM sees); trace file 277,855,252,272 B
+                     = 20 + 164 x records; channel file one row per 8 records
+  input row          39 stage-1 columns (22 of the first mixer stage, 13 structure columns,
+                     4 SEMCACHE columns), base probability, raw final-mixer output, coded bit;
+                     channel: 4 transformer values, 32-value sketch of the transformer state, gate zone
+
+Zones (record index = head bit, from 0; boundaries on the 1,024-bit window grid)
+  metablock          [0, 30,990,992)              metadata block and census metadata block (gate zone 3)
+  text 1             [30,991,360, 1,048,449,024)  1,017,457,664 bits, up to the calendar block
+                                                   (page 143,227 of the article order)
+  text 2             [1,048,449,024, 1,694,239,343)  645,790,319 bits, the rest of the stream
+  The first record of text 1 and of text 2 is fed with h = c = 0 and previous bit 0.5, as the
+  compressor switches the weight sets.
+
+Training (GPU, PyTorch; tools in bitl/tools/, lr in units of 1e-6 on the command lines)
+  metablock  store   cm_cut.py over [0, 30,990,992)
+             train   cm_train.py --cells 16 --batch 256 --lr0 10000 --lr1 100 --seed 1112363057
+                     --epochs 1024 --zero-cols 1,7,8,10,11,12,14,17,19,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38
+                     --zero-hid                                    (16 cells, columns constant in the zone zeroed)
+             tune    cm_qft.py --cells 16 --k 3 --epochs 128 --lr0 100 --lr1 1   (best epoch 104)
+             round   bz_nblb.py v2 <best> <out> 3                 (bfloat16, mantissa rounded to 3 bits)
+             widen   cm_weiten.py <out> meta.nblb 32              (cells 16 to 31 zero, computes as 16 cells)
+  text 1     store   tb_cut.py over [30,991,352, 1,048,704,000)   (8 records before the zone for the previous bit)
+             train   tb_train.py --cells 32 --batch 256 --lr0 3000 --lr1 30 --seed 1112363057 --epochs 256
+             tune    tb_qft.py --cells 32 --k 4 --epochs 16 --lr0 100 --lr1 1
+             round   bz_nblb.py v2 <best> text1.nblb 4
+  text 2     store   tb_cut.py over [1,048,449,016, 1,694,239,343)
+             train   tb_train.py --cells 32 --batch 256 --lr0 3000 --lr1 30 --seed 1112363057 --epochs 256
+             tune    tb_qft.py --cells 32 --k 3 --epochs 16 --lr0 100 --lr1 1
+             round   bz_nblb.py v2 <best> text2.nblb 3
+  A step is one Adam update over 256 windows of 1,024 bits; the learning rate falls along a cosine
+  from lr0 to lr1 per step.  The tune step trains on the weights rounded to k mantissa bits
+  (straight-through) and keeps the epoch end with the lowest cost.
+
+Effect in the zone, replay of the frozen weights on the trace (bytes against no BITLSTM, weights not counted)
+  metablock  -18,006.9 B
+  text 1     -323,857.9 B   (replay_text1.txt, row q1k4_v2)
+  text 2     -212,026.7 B   (replay_text2.txt, row q2k3_v2)
+
+Files (sha256 in SHA256SUMS)
+  meta.nblb    22,426 B   729cbf956bc0e6eb...
+  text1.nblb   22,426 B   f839bd1c33bb6601...
+  text2.nblb   22,426 B   e2e1cbe7dc9d751d...
+  python3 bitl/tools/weights_header.py meta.nblb text1.nblb text2.nblb writes src/bit_head_weights.h of
+  this entry byte for byte (sha256 fa71c04da95301a82551212dfe76855bfbafb1b6f42739e4de1d9bb9472733d8).

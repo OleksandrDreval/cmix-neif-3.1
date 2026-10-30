@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 716" width="960" height="716" role="img" aria-labelledby="t d">
+<title id="t">Layout of the coder stream</title>
+<desc id="d">The 2.0 coder stream to scale against the 1.0 stream: metadata block, census metadata block, text start with dictionary, contributor and census pseudo article, redirect block, articles with the calendar block, census pages, image, Wikipedia: and disambiguation pages; bands for the three BITLSTM weight sets and for the transformer and SEMCACHE; enlarged views of the first 4.1 % and the last 3.2 %.</desc>
+<defs><linearGradient id="sl-aus" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#fcfcfb" stop-opacity="0"/><stop offset="1" stop-color="#fcfcfb" stop-opacity="1"/></linearGradient></defs>
+<rect x="0.5" y="0.5" width="959" height="715" rx="6" fill="#fcfcfb" stroke="#d9d8d1"/>
+<text x="24" y="34" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="17" fill="#0b0b0b" font-weight="600">Layout of the coder stream</text>
+<text x="24" y="54" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#52514e">501,062,281 B after preprocessing (1.0: 552,750,198 B), 243,425 pages. All bars are to scale in bytes of the stream.</text>
+<rect x="64" y="142" width="4.91" height="24" fill="#2a78d6"/>
+<rect x="69.91" y="142" width="13.64" height="24" fill="#a56f00"/>
+<rect x="84.55" y="142" width="0.77" height="24" fill="#9085e9"/>
+<rect x="85.32" y="142" width="2.66" height="24" fill="#9085e9"/>
+<rect x="88.11" y="142" width="4.76" height="24" fill="#eb6834"/>
+<rect x="93.87" y="142" width="433.31" height="24" fill="#c9c7bd"/>
+<rect x="528.17" y="142" width="14.92" height="24" fill="#1baf7a"/>
+<rect x="544.09" y="142" width="249.61" height="24" fill="#c9c7bd"/>
+<rect x="794.71" y="142" width="33.3" height="24" fill="#eda100"/>
+<rect x="829" y="142" width="3.24" height="24" fill="#e87ba4"/>
+<rect x="833.24" y="142" width="13.43" height="24" fill="#008300"/>
+<rect x="847.67" y="142" width="5.78" height="24" fill="#4a3aa7"/>
+<text x="54" y="159" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" text-anchor="end" font-weight="600">2.0</text>
+<text x="862.46" y="159" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">501.1 MB</text>
+<text x="311.02" y="118" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" text-anchor="middle"><tspan font-weight="600">articles</tspan><tspan fill="#52514e" dx="7">54.9 %</tspan></text>
+<text x="311.02" y="133" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="middle">72,079 pages, 275.3 MB</text>
+<line x1="536.13" y1="139" x2="536.13" y2="102" stroke="#b5b4aa" stroke-width="1"/>
+<text x="536.13" y="82" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" text-anchor="middle"><tspan font-weight="600">calendar block</tspan><tspan fill="#52514e" dx="7">2.0 %</tspan></text>
+<text x="536.13" y="97" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="middle">3,417 pages, 10.1 MB</text>
+<text x="669.4" y="118" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" text-anchor="middle"><tspan font-weight="600">articles</tspan><tspan fill="#52514e" dx="7">31.7 %</tspan></text>
+<text x="669.4" y="133" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="middle">37,522 pages, 158.9 MB</text>
+<line x1="811.85" y1="139" x2="811.85" y2="102" stroke="#b5b4aa" stroke-width="1"/>
+<text x="817.85" y="82" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" text-anchor="middle"><tspan font-weight="600">census pages</tspan><tspan fill="#52514e" dx="7">4.3 %</tspan></text>
+<text x="817.85" y="97" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="middle">36,519 pages, 21.7 MB</text>
+<rect x="64" y="176" width="7.35" height="12" fill="#2a78d6"/>
+<rect x="72.15" y="176" width="4.95" height="12" fill="#eb6834"/>
+<rect x="77.89" y="176" width="436.33" height="12" fill="#c9c7bd"/>
+<rect x="515.02" y="176" width="15.65" height="12" fill="#1baf7a"/>
+<rect x="531.47" y="176" width="252.58" height="12" fill="#c9c7bd"/>
+<rect x="784.85" y="176" width="123.96" height="12" fill="#eda100"/>
+<rect x="909.61" y="176" width="3.67" height="12" fill="#e87ba4"/>
+<rect x="914.08" y="176" width="14.15" height="12" fill="#008300"/>
+<rect x="929.03" y="176" width="5.86" height="12" fill="#4a3aa7"/>
+<text x="54" y="186" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#52514e" text-anchor="end" font-weight="600">1.0</text>
+<text x="847.23" y="203" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="middle">census pages 79.1 MB</text>
+<text x="936" y="172" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="1" fill="#0b0b0b"></text>
+<line x1="64" y1="210" x2="936" y2="210" stroke="#e1e0d9" stroke-width="1"/>
+<line x1="64" y1="210" x2="64" y2="216" stroke="#b5b4aa" stroke-width="1"/>
+<text x="64" y="229" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#6f6e69" text-anchor="middle">0 MB</text>
+<line x1="142.88" y1="210" x2="142.88" y2="213" stroke="#b5b4aa" stroke-width="1"/>
+<line x1="221.76" y1="210" x2="221.76" y2="216" stroke="#b5b4aa" stroke-width="1"/>
+<text x="221.76" y="229" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#6f6e69" text-anchor="middle">100 MB</text>
+<line x1="300.63" y1="210" x2="300.63" y2="213" stroke="#b5b4aa" stroke-width="1"/>
+<line x1="379.51" y1="210" x2="379.51" y2="216" stroke="#b5b4aa" stroke-width="1"/>
+<text x="379.51" y="229" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#6f6e69" text-anchor="middle">200 MB</text>
+<line x1="458.39" y1="210" x2="458.39" y2="213" stroke="#b5b4aa" stroke-width="1"/>
+<line x1="537.27" y1="210" x2="537.27" y2="216" stroke="#b5b4aa" stroke-width="1"/>
+<text x="537.27" y="229" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#6f6e69" text-anchor="middle">300 MB</text>
+<line x1="616.15" y1="210" x2="616.15" y2="213" stroke="#b5b4aa" stroke-width="1"/>
+<line x1="695.03" y1="210" x2="695.03" y2="216" stroke="#b5b4aa" stroke-width="1"/>
+<text x="695.03" y="229" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#6f6e69" text-anchor="middle">400 MB</text>
+<line x1="773.9" y1="210" x2="773.9" y2="213" stroke="#b5b4aa" stroke-width="1"/>
+<line x1="852.78" y1="210" x2="852.78" y2="216" stroke="#b5b4aa" stroke-width="1"/>
+<text x="852.78" y="229" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#6f6e69" text-anchor="middle">500 MB</text>
+<text x="54" y="258" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="1" fill="#0b0b0b"></text>
+<rect x="64" y="246" width="19.55" height="16" fill="#3d3c39"/>
+<rect x="84.55" y="246" width="442.63" height="16" fill="#6f6e69"/>
+<text x="306.36" y="258" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="600">BITLSTM weights 2</text>
+<rect x="528.17" y="246" width="326.29" height="16" fill="#9d9c94"/>
+<text x="691.32" y="258" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="600">BITLSTM weights 3</text>
+<text x="862.46" y="258" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">BITLSTM</text>
+<rect x="64" y="266" width="19.55" height="16" fill="#e4e3dd"/>
+<rect x="84.55" y="266" width="769.91" height="16" fill="#3d3c39"/>
+<text x="469.5" y="278" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="600">transformer and SEMCACHE on</text>
+<text x="862.46" y="278" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">transformer</text>
+<path d="M64 287 v5 H96.34 v-5" fill="none" stroke="#52514e" stroke-width="1.2"/>
+<text x="80.17" y="307" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" text-anchor="middle" font-weight="600">a</text>
+<path d="M829 287 v5 H854.46 v-5" fill="none" stroke="#52514e" stroke-width="1.2"/>
+<text x="841.73" y="307" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" text-anchor="middle" font-weight="600">b</text>
+<line x1="24" y1="321" x2="936" y2="321" stroke="#e1e0d9" stroke-width="1"/>
+<text x="24" y="339" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b"><tspan font-weight="600">a</tspan><tspan dx="10">The first 4.1 % (20.5 MB), enlarged</tspan></text>
+<rect x="64" y="447" width="157.22" height="28" fill="#2a78d6"/>
+<rect x="223.22" y="447" width="392.77" height="28" fill="#a56f00"/>
+<rect x="617.99" y="447" width="18.86" height="28" fill="#9085e9"/>
+<rect x="638.85" y="447" width="69.69" height="28" fill="#9085e9"/>
+<rect x="710.54" y="447" width="3.51" height="28" fill="#9085e9"/>
+<rect x="714.05" y="447" width="153.29" height="28" fill="#eb6834"/>
+<rect x="869.34" y="447" width="66.66" height="28" fill="#c9c7bd"/>
+<rect x="886" y="446" width="50.5" height="30" fill="url(#sl-aus)"/>
+<text x="143.61" y="465.5" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="600">metadata block</text>
+<text x="420.61" y="465.5" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="600">census metadata block</text>
+<text x="791.69" y="465.5" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="600">redirect block</text>
+<text x="873.34" y="439" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" font-weight="600">articles</text>
+<path d="M617.99 443 v-6 H714.05 v6" fill="none" stroke="#52514e" stroke-width="1.2"/>
+<line x1="666.02" y1="437" x2="666.02" y2="393" stroke="#b5b4aa" stroke-width="1"/>
+<text x="666.02" y="357" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" text-anchor="middle"><tspan font-weight="600">text start</tspan><tspan fill="#52514e" dx="7">2.26 MB</tspan></text>
+<text x="666.02" y="372" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="middle">1 dictionary article 0.49 MB, 2 contributor</text>
+<text x="666.02" y="387" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="middle">article 1.69 MB, 3 census pseudo article 0.08 MB</text>
+<text x="628.42" y="465.5" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" fill="#ffffff" text-anchor="middle" font-weight="600">1</text>
+<text x="674.7" y="465.5" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" fill="#ffffff" text-anchor="middle" font-weight="600">2</text>
+<text x="64" y="371" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b"><tspan font-weight="600">metadata block</tspan><tspan fill="#52514e" dx="7">3.74 MB</tspan></text>
+<text x="64" y="387" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">two records for each page;</text>
+<text x="64" y="402" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">names in the contributor article</text>
+<text x="283.22" y="371" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b"><tspan font-weight="600">census metadata block</tspan><tspan fill="#52514e" dx="7">9.28 MB</tspan></text>
+<text x="283.22" y="387" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">one record for each of the</text>
+<text x="283.22" y="402" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">36,148 pages of the template form, with</text>
+<text x="283.22" y="417" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">state, type word, flags, gap bits, values</text>
+<text x="718.05" y="439" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">71,148 pages, 3.65 MB</text>
+<line x1="222.22" y1="443" x2="222.22" y2="535" stroke="#0b0b0b" stroke-width="1.2"/>
+<line x1="616.99" y1="443" x2="616.99" y2="535" stroke="#0b0b0b" stroke-width="1.2"/>
+<text x="217.22" y="489" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="end">PPMd restarts</text>
+<text x="611.99" y="489" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="end">PPMd and mixer learning-rate schedules restart</text>
+<line x1="713.05" y1="443" x2="713.05" y2="493" stroke="#0b0b0b" stroke-width="1.2"/>
+<text x="718.05" y="489" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">mixer learning-rate schedules restart</text>
+<rect x="64" y="499" width="552.99" height="16" fill="#3d3c39"/>
+<text x="341" y="511" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="600">BITLSTM weights 1</text>
+<rect x="617.99" y="499" width="318.01" height="16" fill="#6f6e69"/>
+<text x="777" y="511" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="600">BITLSTM weights 2</text>
+<rect x="64" y="519" width="552.99" height="16" fill="#e4e3dd"/>
+<text x="341" y="531" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b" text-anchor="middle">transformer and SEMCACHE off, PPMd at order 14</text>
+<rect x="617.99" y="519" width="318.01" height="16" fill="#3d3c39"/>
+<text x="777" y="531" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#ffffff" text-anchor="middle" font-weight="600">transformer and SEMCACHE on</text>
+<rect x="886" y="498" width="50.5" height="40" fill="url(#sl-aus)"/>
+<text x="64" y="559" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">The text start is the first text that all models code. It carries the contributor names of the metadata block, and the census</text>
+<text x="64" y="574" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#0b0b0b">pseudo article carries the template texts that the census records refer to, each once.</text>
+<line x1="24" y1="593" x2="936" y2="593" stroke="#e1e0d9" stroke-width="1"/>
+<text x="24" y="611" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b"><tspan font-weight="600">b</tspan><tspan dx="10">The last 3.2 % (16.1 MB), enlarged</tspan></text>
+<text x="936" y="611" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="end">the stream ends with the head and end of the XML dump (about 6 KB)</text>
+<rect x="64" y="625" width="143.21" height="28" fill="#e87ba4"/>
+<rect x="209.21" y="625" width="492.33" height="28" fill="#008300"/>
+<rect x="703.54" y="625" width="230.12" height="28" fill="#4a3aa7"/>
+<text x="64" y="670" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" font-weight="600">image pages</text>
+<text x="64" y="685" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">13,908 pages</text>
+<text x="64" y="700" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">2.69 MB</text>
+<text x="209.21" y="670" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" font-weight="600">Wikipedia: pages</text>
+<text x="209.21" y="685" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e">907 pages, 9.15 MB</text>
+<text x="936" y="670" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="13" fill="#0b0b0b" text-anchor="end" font-weight="600">disambiguation pages</text>
+<text x="936" y="685" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="12" fill="#52514e" text-anchor="end">7,925 pages, 4.30 MB</text>
+</svg>
