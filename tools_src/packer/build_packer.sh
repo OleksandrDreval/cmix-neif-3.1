@@ -1,4 +1,7 @@
 #!/bin/bash
+# Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+# for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+# SPDX-License-Identifier: GPL-3.0-only
 # Packs the stripped binary with the self-extracting stub of this directory.
 # Called by build_and_construct_comp.sh; writes <name>.pak into the working
 # directory.
@@ -110,7 +113,7 @@ if [ "1" != "0" ]; then
 fi
 # --- End build guard ---------------------------------------------------------
 
-gcc -O2 -w -o cmcut_tool "$SRC/pack_tool.c"
+gcc -O3 -march=native -w -o cmcut_tool "$SRC/pack_tool.c"
 
 # Exact x86 address transform over the executable PT_LOADs (the encoder
 # block is a PT_LOAD of its own, so the prefix does not depend on it).
@@ -168,56 +171,93 @@ build_stub() {
 # fills it with int3.
 CUT_FILL_FLAG=""
 [ -n "" ] && CUT_FILL_FLAG="-DCUT_FILL=$CUT_FILL"
+
+# Build shipped stub and probe stub in parallel (independent inputs/outputs).
+(
+  build_stub cutprobe "-DCUT_PROBE $CUT_FILL_FLAG"
+  ./cmcut_tool pack cutprobe.ss cutprobe.p "$NF" "$ND" "$N.probe" cutprobe.s2.bin "$S2TEXT" >/dev/null
+  ./cmcut_tool cut "$N.probe" "$N.probe.dec" >/dev/null
+  chmod +x "$N.probe" "$N.probe.dec"
+) &
+PID_PROBE_BUILD=$!
+
 build_stub cutstub "$CUT_FILL_FLAG"
 S2TEXT_SHIP=$S2TEXT
 cp cutstub.p "$N.p"
 
 ./cmcut_tool pack cutstub.ss "$N.p" "$NF" "$ND" "$N.cut" cutstub.s2.bin "$S2TEXT_SHIP"
+./cmcut_tool cut "$N.cut" "$N.cut.dec"
+gcc -O2 -w -shared -fPIC -o stub_capture.so "$SRC/stub_capture.c"
+chmod +x "$N.cut" "$N.cut.dec"
+rm -f "$N.cap" "$N.cap.dec"
 
-# --- Cross-checks ---------------------------------------------------------
+wait "$PID_PROBE_BUILD" || exit 1
+
+# --- Cross-checks (parallel) ----------------------------------------------
 # Each check ABORTS the build on a mismatch ("cmp && echo" would not: under
 # set -e a failing command inside an && list does not stop the script).
 fail() { echo "CUT-GEGENPROBE FEHLGESCHLAGEN: $1" >&2; exit 1; }
+CHK_PIDS=""
+
 # (a) full package unpacks bit-identical to the input (reference unpacker)
-./cmcut_tool unpack "$N.cut" "$N.chk" cutstub.s2.bin "$S2TEXT_SHIP" >/dev/null
-cmp -s "$N.ss" "$N.chk" || fail "voll"
-echo "CUT-Gegenprobe voll: bitidentisch"
+(
+  ./cmcut_tool unpack "$N.cut" "$N.chk" cutstub.s2.bin "$S2TEXT_SHIP" >/dev/null
+  cmp -s "$N.ss" "$N.chk" || fail "voll"
+  echo "CUT-Gegenprobe voll: bitidentisch"
+) &
+CHK_PIDS="$CHK_PIDS $!"
+
 # (b) the truncated .decomp_bin yields the prefix [0,Nd) bit-identical
-./cmcut_tool cut "$N.cut" "$N.cut.dec"
-./cmcut_tool unpack "$N.cut.dec" "$N.chkdec" cutstub.s2.bin "$S2TEXT_SHIP" >/dev/null
-cmp -s <(head -c "$ND" "$N.chkdec") <(head -c "$ND" "$N.ss") || fail "dec"
-echo "CUT-Gegenprobe dec: Praefix bitidentisch"
+(
+  ./cmcut_tool unpack "$N.cut.dec" "$N.chkdec" cutstub.s2.bin "$S2TEXT_SHIP" >/dev/null
+  cmp -s <(head -c "$ND" "$N.chkdec") <(head -c "$ND" "$N.ss") || fail "dec"
+  echo "CUT-Gegenprobe dec: Praefix bitidentisch"
+) &
+CHK_PIDS="$CHK_PIDS $!"
+
 # (c) the REAL stub code path: a probe build of the same sources, which
 # writes the image to stdout instead of executing it (full package and cut
 # .decomp_bin).  The reference unpacker alone once passed while the shipped
 # stub did not.  The probe's own code differs, so with the warm-up it gets
 # its own stream (same image, warmed up on the probe stub).
-build_stub cutprobe "-DCUT_PROBE $CUT_FILL_FLAG"
-./cmcut_tool pack cutprobe.ss cutprobe.p "$NF" "$ND" "$N.probe" cutprobe.s2.bin "$S2TEXT" >/dev/null
-./cmcut_tool cut "$N.probe" "$N.probe.dec" >/dev/null
-chmod +x "$N.probe" "$N.probe.dec"
-( ulimit -c 0; "./$N.probe" > "$N.probe.out" ) || fail "Stubprobe voll (rc)"
-cmp -s "$N.ss" "$N.probe.out" || fail "Stubprobe voll"
-echo "CUT-Stubprobe voll: bitidentisch"
-( ulimit -c 0; "./$N.probe.dec" > "$N.probe.dec.out" ) || fail "Stubprobe dec (rc)"
-[ "$(stat -c%s "$N.probe.dec.out")" = "$NF" ] || fail "stub probe dec (length)"
-cmp -s <(head -c "$ND" "$N.probe.dec.out") <(head -c "$ND" "$N.ss") || fail "Stubprobe dec"
-echo "CUT-Stubprobe dec: Praefix bitidentisch"
-rm -f "$N.probe" "$N.probe.dec" "$N.probe.out" "$N.probe.dec.out"
+(
+  ( ulimit -c 0; "./$N.probe" > "$N.probe.out" ) || fail "Stubprobe voll (rc)"
+  cmp -s "$N.ss" "$N.probe.out" || fail "Stubprobe voll"
+  echo "CUT-Stubprobe voll: bitidentisch"
+) &
+CHK_PIDS="$CHK_PIDS $!"
+
+(
+  ( ulimit -c 0; "./$N.probe.dec" > "$N.probe.dec.out" ) || fail "Stubprobe dec (rc)"
+  [ "$(stat -c%s "$N.probe.dec.out")" = "$NF" ] || fail "stub probe dec (length)"
+  cmp -s <(head -c "$ND" "$N.probe.dec.out") <(head -c "$ND" "$N.ss") || fail "Stubprobe dec"
+  echo "CUT-Stubprobe dec: Praefix bitidentisch"
+) &
+CHK_PIDS="$CHK_PIDS $!"
+
 # (d) the SHIPPED stub with the SHIPPED stream: package and cut .decomp_bin are
 # started for real; an LD_PRELOAD helper copies the image the stub exec'd
 # (/proc/self/exe) before anything of it runs, then exits (stub_capture.c).
-gcc -O2 -w -shared -fPIC -o stub_capture.so "$SRC/stub_capture.c"
-chmod +x "$N.cut" "$N.cut.dec"
-rm -f "$N.cap" "$N.cap.dec"
-( ulimit -c 0; LD_PRELOAD="$PWD/stub_capture.so" STUB_CAPTURE="$PWD/$N.cap" "./$N.cut" -h ) || fail "Echtstart voll (rc)"
-cmp -s <(head -c "$NF" "$N.cap") "$N.ss" || fail "Echtstart voll"
-echo "CUT-Echtstart voll: bitidentisch"
-( ulimit -c 0; LD_PRELOAD="$PWD/stub_capture.so" STUB_CAPTURE="$PWD/$N.cap.dec" "./$N.cut.dec" -h ) || fail "Echtstart dec (rc)"
-cmp -s <(head -c "$ND" "$N.cap.dec") <(head -c "$ND" "$N.ss") || fail "Echtstart dec"
-cmp -s <(head -c "$NF" "$N.cap.dec" | tail -c +"$((ND + 1))") <(head -c "$((NF - ND))" /dev/zero) || fail "Echtstart dec (Nullen)"
-echo "CUT-Echtstart dec: Praefix bitidentisch, Rest Nullen"
-rm -f "$N.cap" "$N.cap.dec" stub_capture.so
+(
+  ( ulimit -c 0; LD_PRELOAD="$PWD/stub_capture.so" STUB_CAPTURE="$PWD/$N.cap" "./$N.cut" -h ) || fail "Echtstart voll (rc)"
+  cmp -s <(head -c "$NF" "$N.cap") "$N.ss" || fail "Echtstart voll"
+  echo "CUT-Echtstart voll: bitidentisch"
+) &
+CHK_PIDS="$CHK_PIDS $!"
+
+(
+  ( ulimit -c 0; LD_PRELOAD="$PWD/stub_capture.so" STUB_CAPTURE="$PWD/$N.cap.dec" "./$N.cut.dec" -h ) || fail "Echtstart dec (rc)"
+  cmp -s <(head -c "$ND" "$N.cap.dec") <(head -c "$ND" "$N.ss") || fail "Echtstart dec"
+  cmp -s <(head -c "$NF" "$N.cap.dec" | tail -c +"$((ND + 1))") <(head -c "$((NF - ND))" /dev/zero) || fail "Echtstart dec (Nullen)"
+  echo "CUT-Echtstart dec: Praefix bitidentisch, Rest Nullen"
+) &
+CHK_PIDS="$CHK_PIDS $!"
+
+for pid in $CHK_PIDS; do
+  wait "$pid" || exit 1
+done
+
+rm -f "$N.probe" "$N.probe.dec" "$N.probe.out" "$N.probe.dec.out" "$N.cap" "$N.cap.dec" stub_capture.so
 
 cp "$N.cut" "$N.pak"
 

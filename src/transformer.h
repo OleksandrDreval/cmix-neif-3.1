@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #ifndef TRANSFORMER_H_
 #define TRANSFORMER_H_
 
@@ -153,7 +156,7 @@ inline void SetBlobForm() { BlobForm() = true; }
 // is read from the environment.
 inline const char* WeightsPath() { return "weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5"; }
 inline unsigned long long WeightsFingerprint() {
-  return 0xaec368ac6a568632ULL;
+  return 0x7b5d6d235c69c947ULL;
 }
 inline bool Mute() { return false; }
 

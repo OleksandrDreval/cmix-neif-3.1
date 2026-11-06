@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #ifndef AUTHOR_BLOCK_H_
 #define AUTHOR_BLOCK_H_
 #include "meld.h"
@@ -174,11 +177,10 @@ class Aut {
     have_block_ = true;
   }
 
-  Phase phase_ = kBlock;
+  [[maybe_unused]] Phase phase_ = kBlock;
   bool have_block_ = false;
-  bool block_opened_ = false;
   unsigned long long block_fertig_bei_ = 0, ende_der_einheit_ = 0;
-  unsigned char prev_ = 0;
+  [[maybe_unused]] unsigned char prev_ = 0;
   unsigned char tail_[16] = {0};
   unsigned long long gesehen_ = 0;
   long long seite_ = 0;

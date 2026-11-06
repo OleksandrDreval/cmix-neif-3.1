@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // tf1_np_codec: writer of the transformer weight container in
 // format NP (magic FX2TFWN5/FX2TFWN6) and NP2 (FX2TFWP5/FX2TFWP6;
 // reader and layout: the head comment of
@@ -268,15 +271,19 @@ uint8_t pick_encoding(const Ent& e, const std::map<std::string, const Ent*>& see
 // the value models of one stream (NP: stream A and stream B have one each)
 struct ValModels {
   Models m{true};
+  CountNode sign_int4w;
+  std::vector<uint8_t> last_zrow;
   ValModels() {
     m.cplane.resize(2 * 256);
-    m.cint4w.resize(24 * 16);
+    m.cint4w.resize(12 * 8);
     m.f32hl.assign(257 * 256, 1024);
     m.cint4q7.resize(24 * 8);
     m.cint4q3.resize(24 * 4);
   }
-  std::map<std::string, std::vector<uint16_t>> bf16c;  // per canonical name
-  std::map<std::string, std::vector<CountNode>> f32hc;  // per canonical name, 5 hi trees
+  std::map<std::string, std::vector<CountNode>> cint4w_cn;  // per canonical name, 12 * 8
+  std::map<std::string, std::vector<uint16_t>> bf16c;       // per canonical name
+  std::map<std::string, std::vector<CountNode>> bf16c_hi;   // per canonical name, 256 hi nodes
+  std::map<std::string, std::vector<CountNode>> f32hc;      // per canonical name, 5 hi trees
 };
 
 void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
@@ -288,6 +295,10 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
       static const uint8_t kU7[5] = {0, 2, 5, 7, 9};
       static const uint8_t kU3[3] = {0, 7, 14};
       size_t R = e.rows(), C = e.cols();
+      if (enc == ENC_INT4W) vm.last_zrow.assign(R, 0);
+      else vm.last_zrow.clear();
+      auto& cw = vm.cint4w_cn[cn];
+      if (cw.empty()) cw.resize(12 * 8);
       std::vector<uint64_t> cs(C, 0);
       uint64_t n = 0, T = 0, N = 0;
       int prev = 0;
@@ -300,7 +311,10 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
             break;
           }
         E.encode_cbit(&m.zrow, zero, CNT_LIMIT_ZROW);
-        if (zero) continue;
+        if (zero) {
+          if (enc == ENC_INT4W) vm.last_zrow[r] = 1;
+          continue;
+        }
         int alpha = 0;
         if (enc == ENC_INT4Q) {
           int mx = 0;
@@ -312,19 +326,30 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
         }
         uint64_t rs = 0;
         for (size_t k = 0; k < C; k++) {
-          uint64_t M = (T * 65536 + 64 * 190054) / (N + 64);
-          if (M < 1) M = 1;
-          uint64_t rr = (rs * 65536 + 64 * M) / (k + 64);
-          uint64_t cc = (cs[k] * 65536 + 64 * M) / (n + 64);
-          uint64_t b = (8 * rr * cc) / (M * 65536);
-          b = b < 8 ? 0 : (b > 8 + 23 ? 23 : b - 8);
           int v = row[k];
-          if (alpha == 0) E.encode_ctree(&m.cint4w[b * 16], 4, v + 7, CNT_LIMIT_INT4W);
-          else if (alpha == 1) E.encode_ctree(&m.cint4q7[b * 8], 3, v + 3, CNT_LIMIT_INT4W);
-          else E.encode_ctree(&m.cint4q3[b * 4], 2, v + 1, CNT_LIMIT_INT4W);
           uint64_t a = uint64_t(v < 0 ? -v : v);
-          if (alpha == 1) a = kU7[a];
-          else if (alpha == 2) a = kU3[a];
+          if (enc == ENC_INT4W) {
+            uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
+            if (M < 1) M = 1;
+            uint64_t rr = (rs * 65536 + 16 * M) / (k + 16);
+            uint64_t cc = (cs[k] * 65536 + 16 * M) / (n + 16);
+            uint64_t b = (2 * rr * cc) / (M * 65536);
+            if (b > 11) b = 11;
+            E.encode_ctree(&cw[b * 8], 3, uint32_t(a), CNT_LIMIT_INT4W);
+            if (a) E.encode_cbit(&vm.sign_int4w, v < 0 ? 1 : 0, CNT_LIMIT_SIGN);
+          } else {
+            uint64_t M = (T * 65536 + 64 * 190054) / (N + 64);
+            if (M < 1) M = 1;
+            uint64_t rr = (rs * 65536 + 64 * M) / (k + 64);
+            uint64_t cc = (cs[k] * 65536 + 64 * M) / (n + 64);
+            uint64_t b = (8 * rr * cc) / (M * 65536);
+            b = b < 8 ? 0 : (b > 8 + 23 ? 23 : b - 8);
+            if (alpha == 0) E.encode_ctree(&m.cint4w[b * 16], 4, v + 7, CNT_LIMIT_INT4W);
+            else if (alpha == 1) E.encode_ctree(&m.cint4q7[b * 8], 3, v + 3, CNT_LIMIT_INT4W);
+            else E.encode_ctree(&m.cint4q3[b * 4], 2, v + 1, CNT_LIMIT_INT4W);
+            if (alpha == 1) a = kU7[a];
+            else if (alpha == 2) a = kU3[a];
+          }
           rs += a;
           cs[k] += a;
           T += a;
@@ -339,10 +364,14 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
     case ENC_BF16C: {
       bool f32 = enc != ENC_BF16C;
       std::vector<uint16_t>* s = &m.f32hl;
+      CountNode* bhi = nullptr;
       if (!f32) {
         auto& t = vm.bf16c[cn];
         if (t.empty()) t.assign(257 * 256, 1024);
+        auto& th = vm.bf16c_hi[cn];
+        if (th.empty()) th.resize(256);
         s = &t;
+        bhi = th.data();
       }
       // ENC_F32HC: the hi byte through counting trees per canonical name and
       // column (columns from 4 on share one tree), the lo byte as ENC_F32HI
@@ -354,6 +383,7 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
       }
       const size_t cols = e.cols();
       for (size_t i = 0, j = 0; i < e.numel(); i++) {
+        if (!f32 && i < vm.last_zrow.size() && vm.last_zrow[i]) continue;
         uint32_t v;
         if (f32) {
           uint32_t u;
@@ -365,16 +395,22 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
           v = u;
         }
         uint32_t hi = v >> 8;
-        if (hc)
+        if (hc) {
           E.encode_ctree(hc + (j < 4 ? j : 4) * 256, 8, hi, CNT_LIMIT_F32HC);
-        else
+          if (++j == cols) j = 0;
+        } else if (bhi) {
+          E.encode_ctree(bhi, 8, hi, CNT_LIMIT_BF16C_HI);
+        } else {
           E.encode_tree(s->data(), 8, hi);
-        if (++j == cols) j = 0;
+          if (++j == cols) j = 0;
+        }
         E.encode_tree(&(*s)[256 + hi * 256], 8, v & 0xFF);
       }
+      vm.last_zrow.clear();
       break;
     }
     case ENC_BF16: {
+      vm.last_zrow.clear();
       for (size_t i = 0; i < e.numel(); i++) {
         uint16_t u;
         std::memcpy(&u, &e.data[2 * i], 2);
@@ -385,6 +421,7 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
       break;
     }
     case ENC_PLANE4: {
+      vm.last_zrow.clear();
       for (size_t i = 0; i < e.data.size(); i++) {
         if ((i & 3) < 2) E.encode_ctree(&m.cplane[(i & 3) * 256], 8, e.data[i], CNT_LIMIT_PLANE01);
         else E.encode_tree(&m.plane[(i & 3) * 256], 8, e.data[i]);
@@ -393,8 +430,10 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
     }
     case ENC_ROPE_SIN:
     case ENC_ROPE_COS:
+      vm.last_zrow.clear();
       break;  // recomputed by the reader
     case ENC_RAW:
+      vm.last_zrow.clear();
       for (uint8_t b : e.data) E.encode_tree(m.raw.data(), 8, b);
       break;
     default:
@@ -822,8 +861,12 @@ std::vector<uint8_t> encode_np(std::vector<Ent> es, int ver, bool k, const std::
     std::fill(m.cint4q7.begin(), m.cint4q7.end(), CountNode());
     std::fill(m.cint4q3.begin(), m.cint4q3.end(), CountNode());
     m.zrow = CountNode();
+    VB.sign_int4w = CountNode();
+    VB.last_zrow.clear();
+    VB.cint4w_cn.clear();
     for (int c = 0; c < 3; c++) m.qa0[c] = m.qa1[c] = CountNode();
     VB.bf16c.clear();
+    VB.bf16c_hi.clear();
     if (np2) {  // NP2: the groups move f32 rows, the f32 models start fresh too
       m.f32hl.assign(257 * 256, 1024);
       VB.f32hc.clear();

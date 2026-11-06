@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // Census block, page level: the template form of the census pages.
 //
 // The machine-written census pages (title "<name>, <US state>", census
@@ -1364,7 +1367,7 @@ ENC_ONLY inline void Etiketten(const std::string& v, std::vector<unsigned char>*
   if (sonder) {
     // the county slot is F_KREIS, a list member F_GLIED; the rules of the sentence see a letter there
     std::string r(v);
-    for (char& c : r) if ((unsigned char)c == kKreis || (unsigned char)c > kKreis && IstWert((unsigned char)c)) c = 'K';
+    for (char& c : r) if ((unsigned char)c == kKreis || ((unsigned char)c > kKreis && IstWert((unsigned char)c))) c = 'K';
     std::vector<unsigned char> l2;
     Etiketten(r, &l2);
     lab->clear();

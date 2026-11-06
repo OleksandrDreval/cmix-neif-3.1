@@ -1,8 +1,11 @@
-# `training/`: how the pre-trained parts of this entry were produced
+# `training/`: how the pre-trained parts of `cmix-neif-3.1` were produced
 
-This directory is **documentation and tooling, not part of the entry**.
+SPDX-License-Identifier: GPL-3.0-only
+
+This directory is **documentation and tooling, not part of the executable build**.
 `build.sh` never enters it; nothing here is compiled into `archive9` or into the
-decompressor. It serves reproducibility and attribution.
+decompressor. It serves reproducibility and attribution for `cmix-neif-3.1`
+(<https://github.com/OleksandrDreval/cmix-neif-3.1>).
 
 1. **Reproducibility.** Two parts of the compressor are trained offline and
    shipped as frozen weights, the byte-level **transformer** (a weight container
@@ -12,20 +15,27 @@ decompressor. It serves reproducibility and attribution.
    from `enwik9`, ships the tools and the executed configurations, and gives
    the checksums at which a rerun can be compared. Section 9 says what can be
    rerun bit-exactly and what cannot.
-2. **Attribution.** The architecture of the transformer and its training recipe
+2. **Attribution.** In **`cmix-neif-3.1`**, **Oleksandr Dreval**
+   (<https://github.com/OleksandrDreval>) losslessly re-encoded the `.c5`
+   transformer weight container (`tf/3_train/export/np2/tf1_np_codec.cpp`) and
+   rounded slot-1 mantissas of `BITLSTM` (`../src/bit_head_weights.h`) without
+   retraining. Upstream, the architecture of the transformer and its training recipe
    are Vladimir Malinovskii's `cmix-neif-beehive`, whose weights were the start
-   of the training; its trainer descends from Vladimir Ivanov's
+   of the training in `cmix-neif-2.0` (Marcus Wölk); its trainer descends from Vladimir Ivanov's
    `fx2-cmix-transformer`; the design of BITLSTM comes from David Freelan's
    `cmix-obias`; the compressor descends from cmix, fx-cmix, cmix-lex and
-   cmix-neif-1.0. `ATTRIBUTION.md` names the borrowed parts, their authors and
-   their licences.
+   cmix-neif-1.0. `ATTRIBUTION.md` and `../AUTHORS` name the borrowed parts,
+   their authors and their licences.
 
 The pipeline is that of `cmix-neif-1.0` (its `training/` directory,
 `https://github.com/marwoelk/cmix-neif-1.0`), with the stream form, the model,
-the training recipe, the container formats and the training of BITLSTM of this
-version. Section 10 lists the differences.
+the training recipe, the container formats and the training of BITLSTM of
+`cmix-neif-2.0` and the lossless `.c5` / slot-1 refinements of `cmix-neif-3.1`.
+Section 10 lists the differences.
 
-Everything in this directory is GPL-3, like the rest of the entry, except the
+Everything in this directory is distributed under **GPL-3.0-only** (an
+OSI-approved Free Software licence, like the rest of `cmix-neif-3.1`; see
+`../AUTHORS` and `../LICENSE`), except the
 third-party files listed in `../third_party/README.md` (copies in
 `tf/tree_upstream/src/ds/`, altered `avx_mathfun.h` routines in
 `tf/tree_upstream/cpp_infer/`) and the Wikipedia excerpts in
@@ -54,9 +64,10 @@ training package: 488,038,367 tokens, 203,023,960,672 B of priors
 checkpoint (.tch) --> reference weight file (.bin) + manifest (.bin.json)
   |
   v (e) export at window 2048: bf16 rounding, v3, dead neurons, collapsed   tf/3_train/export/
-  |     rows zeroed, v4, v5, NP2
-weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5  3,744,629 B, sha256 729694cb...
-                                                 (appended to both executables)
+  |     rows zeroed, v4, v5, NP2 + cmix-neif-3.1 Sign-Magnitude/per-ci/zrow
+weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5  3,738,126 B, sha256 51c9c08e...
+         (re-encoded losslessly from 3,744,629 B, sha256 729694cb... in 2.0;
+                                                  appended to both executables)
 
 enwik9 --(f) trace run ("-e", trace build) --> inputs of BITLSTM for every bit it sees
           --> three zones (metadata blocks, text 1, text 2)

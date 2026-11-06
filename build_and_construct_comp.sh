@@ -1,4 +1,7 @@
 #!/bin/bash
+# Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+# for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+# SPDX-License-Identifier: GPL-3.0-only
 
 #SEED="$1"
 #UPDATE_LIMIT="$2"
@@ -66,7 +69,7 @@ if [[ "$PAK_PACKER" == "cmstub" && "1" == "1" ]]; then
     --remove-section=.note.ABI-tag \
     symorder.img
   "$OBJCOPY_SS" --strip-sections symorder.img
-  gcc -O2 -w -o symorder_tool "$PAK_STUB_DIR/pack_tool.c" || exit 1
+  gcc -O3 -march=native -w -o symorder_tool "$PAK_STUB_DIR/pack_tool.c" || exit 1
   ./symorder_tool xform symorder.img symorder.x || exit 1
   python3 "$PAK_STUB_DIR/symorder.py" symorder.x cmix.map > symbol_order.txt || exit 1
   rm -f symorder.img symorder.x symorder_tool

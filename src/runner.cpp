@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #include "meld.h"
 #include <string>
 #include <ctime>
@@ -68,7 +71,7 @@ static long ParamI(const char* name, long def) {
   double v = ParamD(name, (double)def);
   return (long)(v < 0 ? v - 0.5 : v + 0.5);
 }
-static void WriteManifest(const char* path, int argc, char** argv) {
+[[maybe_unused]] static void WriteManifest(const char* path, int argc, char** argv) {
   (void)path; (void)argc; (void)argv;
 }
 }
@@ -487,7 +490,7 @@ __attribute__((noinline)) static void TextStartByte(Predictor* p) {
 
 ENC_ONLY static void TextStartSepEnc(Encoder& e, unsigned int c, unsigned long long pos) {
   unsigned int ctx = 1;
-  const int a = metablock::zw::art;
+  const int a = metablock::zw::art; (void)a;
   for (int j = 7; j >= 0; --j) {
     const int bit = (int)((c >> j) & 1u);
     const int f = metablock::zw::line_buf[ctx & 255u];
@@ -629,7 +632,7 @@ void Compress(unsigned long long input_bytes, FILE* is,
       AfterStreamByte(p, c);   // the readers of the stream, mirrored in Decompress()
       if (--prog_left == 0) {
         prog_left = percent;
-        double frac = 100.0 * pos / input_bytes;
+        double frac = 100.0 * pos / input_bytes; (void)frac;
 
         HUGEPAGE_TICK(pos);
         console_progress::Tick(pos, input_bytes);
@@ -703,7 +706,7 @@ void Decompress(unsigned long long output_length, FILE* is,
     AfterStreamByte(p, (unsigned char)(byte & 255));   // as in Compress()
     if (--prog_left == 0) {
       prog_left = percent;
-      double frac = 100.0 * pos / output_length;
+      double frac = 100.0 * pos / output_length; (void)frac;
       HUGEPAGE_TICK(pos);
       console_progress::Tick(pos, output_length);
     }

@@ -1,4 +1,30 @@
-# Changes against `cmix-neif-1.0`
+# Changes in `cmix-neif-3.1` (against `cmix-neif-2.0`)
+
+SPDX-License-Identifier: GPL-3.0-only
+
+* **Author of `cmix-neif-3.1` modifications:** **Oleksandr Dreval** (<https://github.com/OleksandrDreval>)
+* **Repository:** <https://github.com/OleksandrDreval/cmix-neif-3.1>
+* **Copyright & License:** Copyright (C) 2026 Oleksandr Dreval — distributed under **GNU General Public License v3.0 only (`GPL-3.0-only`)**, an official OSI-Approved Open Source License (<https://opensource.org/license/gpl-3-0>) and FSF Free Software License (GPL-3.0 section 5a modification notice; see `LICENSE` and `AUTHORS`):
+
+1. **Packer & self-extracting stub (`tools_src/packer/stub.c`, `tools_src/packer/build_packer.sh`, `build_and_construct_comp.sh`)**: moved the stage-2 warm-up `memcpy` and `x86t_range` transform ahead of the first `syscall` in `s2_main()` so user-space syscall interception (`systrap`) cannot corrupt RWX `s2_base` bytes before warm-up; upgraded host packer tools to `-O3 -march=native` and parallelized stub builds and all 6 packer cross-checks.
+2. **Lossless `.c5` transformer weight container (`weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5`, `src/tf1/weights_io_compressed.cpp`, `src/tf1/weights_io.h`, `src/transformer.h`, `training/tf/3_train/export/np2/tf1_np_codec.cpp`)**: added Sign-Magnitude coding for `ENC_INT4W`, per-canonical-name (`ci`) probability tables, refined width bucketing and `CNT_LIMIT_INT4W = 1535`, per-`ci` counting hi-byte trees for `ENC_BF16C`, and `last_zrow` scale skipping, shrinking the container losslessly from `3,744,629 B` to `3,738,126 B` (`-6,503 B` per copy, `-13,006 B` in `S`, FNV-1a-64 `0x7b5d6d235c69c947ULL`).
+3. **BITLSTM weights & frozen AVX2 fast-path (`src/bit_head_weights.h`, `src/bit_head.cpp`)**: rounded slot-1 (`i in [2561, 13570)`) `bf16` mantissas from 4 bits to 3 bits (round-to-nearest-even) to reduce packed binary entropy (`-1,567 B` per binary, `-3,134 B` in `S`); skipped dead backprop allocations/copies when `frozen == 1`, eliminated 24 per-bit `_mm256_storeu_ps` gate stores in `Head::Forward()`, and vectorized `hidP` projection in `Adjust()` with `DotPadded`.
+4. **PPMd page pool & SEMCACHE memory / SIMD (`src/models/ppmd_page.h`, `src/models/ppmd_page.cpp`, `src/models/ppmd.cpp`, `src/semantic_cache.h`, `src/predictor.cpp`)**: reduced `DYN_KLEMME_KIB` to `3.5 GiB`, max PPMd pool to `1 GiB` (`64 MiB` helper), initial `StartSubAllocator` buffer to `256 MiB` (`64 MiB` helper), and `SEMCACHE` dimensions to `kNLog = 23, kB = 17` (`2.12 GiB` -> `1.08 GiB`), lowering full-run peak RAM by 2.86x (`9.77 GiB` -> `~3.34 GiB`); removed redundant `memset` on `MAP_ANONYMOUS` allocations and unrolled `SemDotPm1<N>` 4 rows at a time in AVX2.
+5. **Compiler warning cleanups & attribution**: resolved `-Wdangling-else`, `-Wbitwise-instead-of-logical`, `-Wparentheses`, `-Wconstant-logical-operand`, `-Wunused-private-field`, `-Wunused-function`, and `-Wunused-variable` diagnostics across `src/`, added `SPDX-License-Identifier: GPL-3.0-only` modification headers to touched files, and documented benchmarks in `en-optimization_report.md`, `uk-optimization_report.md`, and `AUTHORS`.
+
+## Verified `cmix-neif-3.1` summary against `cmix-neif-2.0`
+
+| metric / component | `cmix-neif-2.0` | `cmix-neif-3.1` | delta |
+|---|---:|---:|---:|
+| `.c5` weight container (per file / in `S`) | 3,744,629 B / 7,489,258 B | **3,738,126 B** / **7,476,252 B** | **-6,503 B** / **-13,006 B** |
+| `BITLSTM` `kBlobW` packed x86-CM (per binary / in `S`) | 22,728 B / 45,456 B | **21,161 B** / **42,322 B** | **-1,567 B** / **-3,134 B** |
+| Peak resident set on `enwik9` | 9.77 GiB | **~3.34 GiB** | **-6.35 GiB (2.86x lower)** |
+| Single-core coding / decoding speed (slices) | 1.00x | **+10.4 % to +10.7 %** | 100 % bit-identical round-trip |
+| Packer build & 6 bit-exact cross-checks | >300 s / `systrap` failure | **143.0 s** | **>2.1x faster**, `systrap`-safe |
+
+---
+
+# Upstream changes in `cmix-neif-2.0` (against `cmix-neif-1.0`, Marcus Wölk)
 
 The reference point is `cmix-neif-1.0`, the previous version of this entry,
 submitted on 5 October 2026 and published at
@@ -147,14 +173,14 @@ rows pays for SEMCACHE, the larger transformer and the fast-weight head.
 * `comp9` started without arguments compresses `enwik9` into `archive9`, so
   `comp9.args` is empty.
 
-## Result
+## Result (`cmix-neif-2.0` baseline against `cmix-neif-1.0`)
 
-| | bytes |
+| | bytes (`cmix-neif-2.0` baseline) |
 |---|---:|
-| `archive9` of this entry, self-extracting | 89,346,392 |
-| `comp9` of this entry, the compressor | 4,042,564 |
-| `comp9.args` of this entry | 0 |
-| **`S` = `comp9` + `archive9` + `comp9.args`** | **93,388,956** |
+| `archive9` of `cmix-neif-2.0`, self-extracting | 89,346,392 |
+| `comp9` of `cmix-neif-2.0`, the compressor | 4,042,564 |
+| `comp9.args` | 0 |
+| **`S` = `comp9` + `archive9` + `comp9.args` (`cmix-neif-2.0`)** | **93,388,956** *(before `-16,140 B` weight/blob savings in `cmix-neif-3.1`)* |
 | for comparison, `cmix-neif-1.0` | 95,914,051 |
 
 ## What was adopted from other entries

@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #include "meld.h"
 #include "predictor.h"
 #include "attributes.h"
@@ -675,15 +678,25 @@ __attribute__((noinline)) void SemDotPm1(const int8_t* rows, int nr, const int8_
   __m256i xv[kV];
   for (int v = 0; v < kV; ++v) xv[v] = _mm256_loadu_si256((const __m256i*)(x + 32 * v));
   for (int r = 0; r < nr; r += 4) {
-    __m256i acc[4];
-    for (int i = 0; i < 4; ++i) {
-      const int8_t* h = rows + (size_t)(r + i) * N;
-      __m256i a = _mm256_maddubs_epi16(one8, _mm256_sign_epi8(xv[0], _mm256_loadu_si256((const __m256i*)h)));
-      for (int v = 1; v < kV; ++v)
-        a = _mm256_add_epi16(a, _mm256_maddubs_epi16(one8, _mm256_sign_epi8(xv[v], _mm256_loadu_si256((const __m256i*)(h + 32 * v)))));
-      acc[i] = _mm256_madd_epi16(a, one16);
+    const int8_t* h0 = rows + (size_t)(r + 0) * N;
+    const int8_t* h1 = rows + (size_t)(r + 1) * N;
+    const int8_t* h2 = rows + (size_t)(r + 2) * N;
+    const int8_t* h3 = rows + (size_t)(r + 3) * N;
+    __m256i a0 = _mm256_maddubs_epi16(one8, _mm256_sign_epi8(xv[0], _mm256_loadu_si256((const __m256i*)h0)));
+    __m256i a1 = _mm256_maddubs_epi16(one8, _mm256_sign_epi8(xv[0], _mm256_loadu_si256((const __m256i*)h1)));
+    __m256i a2 = _mm256_maddubs_epi16(one8, _mm256_sign_epi8(xv[0], _mm256_loadu_si256((const __m256i*)h2)));
+    __m256i a3 = _mm256_maddubs_epi16(one8, _mm256_sign_epi8(xv[0], _mm256_loadu_si256((const __m256i*)h3)));
+    for (int v = 1; v < kV; ++v) {
+      a0 = _mm256_add_epi16(a0, _mm256_maddubs_epi16(one8, _mm256_sign_epi8(xv[v], _mm256_loadu_si256((const __m256i*)(h0 + 32 * v)))));
+      a1 = _mm256_add_epi16(a1, _mm256_maddubs_epi16(one8, _mm256_sign_epi8(xv[v], _mm256_loadu_si256((const __m256i*)(h1 + 32 * v)))));
+      a2 = _mm256_add_epi16(a2, _mm256_maddubs_epi16(one8, _mm256_sign_epi8(xv[v], _mm256_loadu_si256((const __m256i*)(h2 + 32 * v)))));
+      a3 = _mm256_add_epi16(a3, _mm256_maddubs_epi16(one8, _mm256_sign_epi8(xv[v], _mm256_loadu_si256((const __m256i*)(h3 + 32 * v)))));
     }
-    const __m256i t = _mm256_hadd_epi32(_mm256_hadd_epi32(acc[0], acc[1]), _mm256_hadd_epi32(acc[2], acc[3]));
+    const __m256i c0 = _mm256_madd_epi16(a0, one16);
+    const __m256i c1 = _mm256_madd_epi16(a1, one16);
+    const __m256i c2 = _mm256_madd_epi16(a2, one16);
+    const __m256i c3 = _mm256_madd_epi16(a3, one16);
+    const __m256i t = _mm256_hadd_epi32(_mm256_hadd_epi32(c0, c1), _mm256_hadd_epi32(c2, c3));
     _mm_storeu_si128((__m128i*)(out + r), _mm_add_epi32(_mm256_castsi256_si128(t), _mm256_extracti128_si256(t, 1)));
   }
 }
@@ -820,11 +833,9 @@ __attribute__((noinline)) COLD_SIZE_ATTR void Predictor::SemInit() {
   {
     const size_t n[5] = {(size_t)kN * kKB, (size_t)kN, ((size_t)kL << kB) * kM * sizeof(Slot),
                          (size_t)kN * 4, (size_t)kHist};
-    void* const t[5] = {s.key, s.val, s.slot, s.epos, s.hist};
     unsigned long long sum = 0;
     for (int i = 0; i < 5; ++i) sum += n[i];
-    if (ppmd_page::raum(sum))
-      for (int i = 0; i < 5; ++i) memset(t[i], 0, n[i]);
+    (void)ppmd_page::raum(sum);
   }
   // one generator, in this order: projection, table hyperplanes, sketch hyperplanes
   uint64_t r = 0x5EC0CAC4E2ULL;

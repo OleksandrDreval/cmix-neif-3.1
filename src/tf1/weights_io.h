@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // Origin: fx2-cmix-transformer by Vladimir Ivanov, GPL-3.0, file cpp_infer/src/weights_io.h.
 // Ported and modified for this entry in 2026; the changes are listed in
 // sections 3 and 4 of README.md and of the README of cmix-neif-1.0.
@@ -65,7 +68,7 @@ inline float bf16_to_f32(uint16_t bits) {
 }  // namespace fx2
 
 #include <type_traits>
-static_assert(0xaec368ac6a568632ULL == 0xaec368ac6a568632ULL,
+static_assert(0x7b5d6d235c69c947ULL == 0x7b5d6d235c69c947ULL,
               "the stamped name list comes from another container than the stamped weights");
 namespace fx2 {
 namespace namen {

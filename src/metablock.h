@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // Metadata block reader.  One unit parses the metadata block once (part A
 // "page id delta, revid, restrictions", part B "timestamp, author") into a
 // table per page (revid, day number, author) and answers the author channel,
@@ -828,7 +831,8 @@ class Einheit {
   unsigned char zl_[kZeile] = {0};
   int zl_n_ = 0;
   Grenze g_;
-  bool tail_closed_ = false, nach_endet_ = false, bzeile_ = false;
+  [[maybe_unused]] bool tail_closed_ = false;
+  bool nach_endet_ = false, bzeile_ = false;
 
   long long id_lauf_ = 0;
   meta_fields::Interp b1_;

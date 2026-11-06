@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // Text start, file stage.  Behind the line feed that ends the whole metadata
 // block (behind the census line) the stream carries up to three slots, each
 // closed by 0x0B 0x0B, in front of the first page:
@@ -68,7 +71,7 @@ inline bool IstMarke(unsigned char c) {
          c == (unsigned char)0x03;
 }
 
-__attribute__((noinline)) static void Fail(const char* what) {
+[[maybe_unused]] __attribute__((noinline)) static void Fail(const char* what) {
   fprintf(stderr, "\n%s\n", what);
   fflush(stderr);
   exit(1);

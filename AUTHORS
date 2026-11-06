@@ -1,0 +1,73 @@
+# Authors and Copyright Notice — `cmix-neif-3.1`
+
+SPDX-License-Identifier: GPL-3.0-only
+
+## License & Open Source Compliance
+
+`cmix-neif-3.1` is free and open-source software distributed under the
+**GNU General Public License, version 3 only (`GPL-3.0-only`)**:
+
+* **OSI-Approved License:** listed on the Open Source Initiative (OSI) license
+  registry as `GPL-3.0-only` (<https://opensource.org/license/gpl-3-0>).
+* **Free Software License:** certified as free software by the Free Software
+  Foundation (<https://www.gnu.org/licenses/gpl-3.0.html>).
+* **Canonical License Text:** see `LICENSE` in the root of this repository
+  (kept verbatim as required by the Free Software Foundation).
+* **Exceptions:** Wikipedia excerpts in `prof_input/` and
+  `training/tf/tree_upstream/prof_input/` remain under GFDL / CC-BY-SA, and
+  embedded third-party components in `third_party/` carry their respective
+  GPL-3-compatible OSI/free licenses (MIT, Apache-2.0 WITH LLVM-exception,
+  NCSA, BSD-3-Clause, BSD-2-Clause, zlib; see `third_party/README.md`).
+
+---
+
+## Author of Latest Modifications (`cmix-neif-3.1`)
+
+* **Copyright (C) 2026 Oleksandr Dreval**
+  * GitHub Profile: <https://github.com/OleksandrDreval>
+  * Project Repository: <https://github.com/OleksandrDreval/cmix-neif-3.1>
+  * Scope of copyright & GPL-3.0 section 5a modifications (November 2026):
+    1. Stage-2 self-extracting stub `systrap` warm-up fix and parallelized
+       packer build & bit-exact cross-checks (`tools_src/packer/stub.c`,
+       `tools_src/packer/build_packer.sh`, `build_and_construct_comp.sh`).
+    2. Lossless `.c5` transformer weight container entropy-coding upgrades
+       (Sign-Magnitude `ENC_INT4W`, per-canonical-name probability tables,
+       refined width bucketing, counting `ENC_BF16C` high-byte trees, and
+       `last_zrow` zero-scale skipping) and re-encoded container
+       `weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5` (`src/tf1/`,
+       `training/tf/3_train/export/np2/tf1_np_codec.cpp`).
+    3. `BITLSTM` slot-1 3-bit mantissa rounding and frozen AVX2/FMA inference
+       fast-path (`src/bit_head_weights.h`, `src/bit_head.cpp`).
+    4. ~2.86x peak RAM reduction across the `PPMd` page pool and `SEMCACHE`
+       plus 4-row AVX2 unrolling in `SemDotPm1` (`src/models/ppmd*.{h,cpp}`,
+       `src/semantic_cache.h`, `src/predictor.cpp`).
+    5. Compiler warning cleanups across `src/` and analytical/benchmark
+       documentation (`en-optimization_report.md`, `uk-optimization_report.md`,
+       `CHANGES.md`, `NOTICE.md`, `README.md`).
+
+No copyright claim is made by Oleksandr Dreval over inherited upstream code;
+his copyright claim covers the `cmix-neif-3.1` modifications and reports only,
+licensed under `GPL-3.0-only`.
+
+---
+
+## Upstream Authors & Copyright Chain
+
+All inherited copyright and license notices in individual source files remain
+unchanged and in full force (see `NOTICE.md` and `training/ATTRIBUTION.md` for
+the complete component-by-component register):
+
+* **`cmix-neif-2.0` & `cmix-neif-1.0` (2026):** Marcus Wölk (Marcus Woelk) — `GPL-3.0-only`
+* **`cmix-neif-beehive` (2026):** Vladimir Malinovskii — `GPL-3.0`
+* **`ex-girlfriend 1.0` (2026):** Ryan Landay — `GPL-3.0-only`
+* **`fx2-cmix-transformer` (2026):** Vladimir Ivanov — `GPL-3.0`
+* **`cmix-obias` / `BITLSTM` (2026):** David Freelan — `GPL-3.0`
+* **`zmix 1.0` (2026):** James Byrne — `GPL-3.0-or-later`
+* **`fx-deepmix`:** Halvor Yttredal — `GPL-3.0`
+* **`cmix-lex` (Hutter Prize 2026):** Ibrahim Marcouch, Kaido Orav — `GPL-3.0`
+* **`fxcm` / `fx-cmix` / `fx2-cmix`:** Kaido Orav, Byron Knoll, Rohit Dwivedula — `GPL-2.0-or-later` / `GPL-3.0`
+* **`fast-cmix`:** Saurabh Kumar — `GPL-3.0`
+* **`STARLIT` & `phda9`:** Artemiy Margaritov, Alexander Rhatushnyak — `GPL-3.0`
+* **`PPMd` & `mod_ppmd`:** Dmitry Shkarin, Eugene Shelwien — Public Domain / `GPL`
+* **`paq8l` / `paq8px` / `lpaq1`:** Matt Mahoney, Márcio Pais, Zoltán Gotthardt, Przemysław Skibiński — `GPL` / `GPL-2.0-or-later`
+* **`cmix` & `cmix-hp`:** Byron Knoll — `GPL-3.0`

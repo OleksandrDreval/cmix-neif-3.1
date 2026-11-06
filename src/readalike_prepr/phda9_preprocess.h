@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #ifndef PREPR_H
 #define PREPR_H
 #include "../meld.h"
@@ -21,7 +24,7 @@ U64 blockwrite(FILE *file,U8 *ptr, U64 count) {return fwrite(ptr,1,count,file);}
 // abort, never a silent fallback.  The guards sit on the encoder side, at the
 // earliest point where the impossible input would appear; the decoder needs
 // none, because it only sees streams this encoder produced.
-static void phda9_check_failed(const char *what) {
+[[maybe_unused]] static void phda9_check_failed(const char *what) {
   fprintf(stderr, "%s\n", what);
   exit(1);
 }
@@ -429,7 +432,7 @@ static long long unzigzag(long long u) { return (u & 1) ? -((u + 1) / 2) : u / 2
 
 // enc=1: rev_id -> zigzag(rev_id - pred);  enc=0: back again.
 // out must hold 2*n+4096 bytes. Returns: length of the output.
-static size_t revid_apply(const char *in, size_t n, char *out, int enc) {
+[[maybe_unused]] static size_t revid_apply(const char *in, size_t n, char *out, int enc) {
   revts_n = 0;
   size_t i = 0, o = 0;
   while (i < n) {

@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #ifndef PPMD_PAGE_H_
 #define PPMD_PAGE_H_
 
@@ -19,7 +22,7 @@ static const unsigned long long DYN_HALTE =
 static const unsigned long long DYN_RESERVE_MIB = 32ULL;
 // The jury clamp is max(ru_maxrss, process-tree sum) <= 10 GiB.
 static const unsigned long long DYN_KLEMME_KIB =
-    (0) ? (0) : 10485760ULL;
+    (0) ? (0) : 3670016ULL;
 // Fixed safety margin below the clamp (the constant below).  It absorbs
 // whatever the anonymous part adds between two polls; measured worst case with
 // a coarse poll was 104 MiB.

@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // ppmd is written by Dmitry Shkarin.
 // mod_ppmd is adapted from ppmd by Eugene Shelwien.
 // This file is adapted from mod_ppmd_v2: http://encode.su/threads/2515-mod_ppmd
@@ -164,8 +167,9 @@ int StartSubAllocator( qword SASize ) {
   qword t = SASize << 20U;
 
   {
-    const unsigned long long puf =
-      (unsigned long long)(1024) * 1024ULL * 1024ULL;
+    const unsigned long long puf = ppmd_page::hilfs
+      ? (64ULL * 1024ULL * 1024ULL)
+      : (256ULL * 1024ULL * 1024ULL);
     const int rc = ppmd_page::start(t, puf, "ppm.page");
     if( rc ) {
       msg_note(36);
@@ -1007,7 +1011,7 @@ uint CreateSuccessors( uint Skip, pSTATE  p, pPPMC  pc ) {
     } else {
 
       p = ONESTATE(pc);
-      PAGE_WI(p,0).Freq += (!suff(pc)->NumStats & (p[0].Freq<16));
+      PAGE_WI(p,0).Freq += (!suff(pc)->NumStats && (p[0].Freq<16));
     }
 
 LOOP_ENTRY:
@@ -1121,7 +1125,7 @@ uint LtCreateSuccessors( pSTATE p, pPPMC pc, int jF, int cap ) {
       PAGE_WI(pc,0).SummFreq += tmp;
     } else {
       p = ONESTATE(pc);
-      PAGE_WI(p,0).Freq += (!suff(pc)->NumStats & (p[0].Freq<16));
+      PAGE_WI(p,0).Freq += (!suff(pc)->NumStats && (p[0].Freq<16));
     }
 
 LOOP_ENTRY:

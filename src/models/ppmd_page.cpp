@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #include "../meld.h"
 #include "ppmd_page.h"
 #include <cstring>
@@ -258,7 +261,7 @@ static void dyn_pruefe(void) {
     const unsigned long long ber_kib = (V.fehlgriff * SEITE) >> 10;
     if (frei_kib > ber_kib) frei_kib = ber_kib;
   }
-  const unsigned long long max_kib = (unsigned long long)4096 << 10;
+  const unsigned long long max_kib = hilfs ? (64ULL << 10) : (1024ULL << 10);
   const unsigned long long min_kib =
       DYN_MIN_MIB << 10;
   // The upper bound limits the POOL (in frames), not the room; the pool is

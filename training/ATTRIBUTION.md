@@ -1,9 +1,12 @@
-# Attribution and licences
+# Attribution and licences — `cmix-neif-3.1` (`training/`)
+
+SPDX-License-Identifier: GPL-3.0-only
 
 This `training/` directory is distributed under the same terms as the rest of
-the package, **GPL-3** only, without the option of a later version (the licence section of `README.md`
-of the entry gives the reasoning). The full licence text is in `LICENSE` at the
-top level of the package. Exceptions are the third-party files in
+`cmix-neif-3.1`, **GPL-3.0-only** (an OSI-approved Open Source and FSF Free
+Software licence, without the option of a later version; see `../AUTHORS` and
+section 9 of `../README.md`). The full verbatim licence text is in `../LICENSE`
+at the top level of the package. Exceptions are the third-party files in
 `tf/tree_upstream/src/ds/`, the altered `avx_mathfun.h` routines in
 `tf/tree_upstream/cpp_infer/` (`../third_party/README.md`) and the Wikipedia
 excerpts in `tf/tree_upstream/prof_input/` (section 5).
@@ -35,7 +38,7 @@ cmix-neif-1.0 (`https://github.com/marwoelk/cmix-neif-1.0`).
 | the training scripts of the transformer | Vladimir Malinovskii; changes Marcus Wölk | GPL-3 | `tf/3_train/tree/` | from cmix-neif-beehive (section 1). The changes of this version are marked `# 2.0`. Every rank loads the optimizer state, and the ranks compare their parameters at fixed updates; a failure of the data loader is raised (`safe_prefetch.py`, new), and the steps of an epoch are counted against the plan; the sublayers are checkpointed in the quantization-aware and fp32 stages; `os._exit(0)` ends the process |
 | the export of the new tensors and the row encoding `ENC_INT5M` | Vladimir Malinovskii; base Marcus Wölk | GPL-3 | `tf/3_train/export/` | from cmix-neif-beehive, which extended the export tools of cmix-neif-1.0; `export.sh` passes the container on when no neuron is dead (marked `# 2.0`) |
 | container format v5 | Marcus Wölk | GPL-3 | `tf/3_train/export/export4/convert_container_v5.py`, `weights_compress_v3.py` | new in cmix-neif after 1.0; the range coder and the bit trees are Ivanov's (`pysrc/weights_compress.py`), whose range coder follows the form of the LZMA range coder of Igor Pavlov (Public Domain) |
-| container formats NP and NP2 | Marcus Wölk | GPL-3 | `tf/3_train/export/np2/tf1_np_codec.cpp`, `np2_container.py` | new; the encoder of `tf1_np_codec.cpp` is a C++ transcription of the encoder of Ivanov's `pysrc/weights_compress.py`, `np2_container.py` is a Python transcription of `tf1_np_codec.cpp` on top of `weights_compress_v3.py`. They use two methods from the literature, the factorial number system of a permutation (Lehmer code; C.-A. Laisant, 1888) and the bits-back argument (G. E. Hinton and D. van Camp, 1993) |
+| container formats NP and NP2 (and `cmix-neif-3.1` lossless `.c5` entropy-coding upgrades) | Marcus Wölk (`cmix-neif-2.0`); **Oleksandr Dreval** (`cmix-neif-3.1`, <https://github.com/OleksandrDreval>) | GPL-3.0-only | `tf/3_train/export/np2/tf1_np_codec.cpp`, `np2_container.py` | base encoder in `tf1_np_codec.cpp` transcribed from Ivanov's `pysrc/weights_compress.py`, `np2_container.py` in Python on top of `weights_compress_v3.py`, using the Lehmer code (C.-A. Laisant, 1888) and bits-back argument (G. E. Hinton and D. van Camp, 1993); extended in `cmix-neif-3.1` by **Oleksandr Dreval** with Sign-Magnitude `ENC_INT4W`, per-`ci` tables, refined width bucketing, counting `ENC_BF16C` high-byte trees, and `last_zrow` zero-scale skipping |
 | the run modes on the source of the entry | Marcus Wölk | GPL-3 | `tf/1_dump/trainmodes.patch`, `build_dump_tools.sh` | generated from the development tree of the compressor (the code of cmix-neif and the code it inherits from cmix, fx-cmix and cmix-lex, with their authors as in `../NOTICE.md`) by the generator of the source package |
 | conversion of a container back into a training state, lifting of zero rows, the chain driver | Marcus Wölk | GPL-3 | `tf/3_train/container_to_tch.py`, `mlp_lift.py`, `reproduce.sh` | new; `container_to_tch.py` is the inverse of the export of cmix-neif-beehive |
 | the prior check | Marcus Wölk | GPL-3 | `tf/2_package/prior0_check.py` | new |
@@ -94,25 +97,31 @@ weights of section 5 are the weights of cmix-neif-beehive.
 | artefact | author | licence | note |
 |---|---|---|---|
 | the start weights, `weights-poc8m_w2048_p15f_v3bf16_gestrichen_v4.c4` of cmix-neif-beehive (not shipped here, sha256 `141ee13c…`) | Vladimir Malinovskii | GPL-3 | trained from a random initialisation on the training package of cmix-neif-1.0, which was built from `enwik9` alone |
-| the transformer weights of this entry (`weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5`) | Marcus Wölk, trained from the start weights above | GPL-3 | produced by the pipeline documented here from `enwik9` |
-| the BITLSTM weights of this entry (`bitl/record/`) | Marcus Wölk | GPL-3 | produced by the pipeline documented here from a trace of a compression run of `enwik9` |
-| `tf/tree_upstream/prof_input/`, the PGO training text of upstream | **Wikipedia contributors** | **GFDL / CC-BY-SA, not GPL** | an excerpt of `enwik9`, inherited from upstream. The modification notice of cmix-neif does not extend to it |
+| the transformer weights of `cmix-neif-3.1` (`weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5`, 3,738,126 B) | trained by Marcus Wölk (`cmix-neif-2.0`, 3,744,629 B) from the start weights above; losslessly re-encoded in `cmix-neif-3.1` by **Oleksandr Dreval** (<https://github.com/OleksandrDreval>) | GPL-3.0-only | produced from `enwik9` and losslessly re-encoded (`-6,503 B` per copy, 100 % bit-identical across all 597 tensors) |
+| the BITLSTM weights (`bitl/record/`, compiled into `src/bit_head_weights.h`) | trained by Marcus Wölk (`cmix-neif-2.0`); slot-1 mantissa rounded to 3 bits in `src/bit_head_weights.h` by **Oleksandr Dreval** (`cmix-neif-3.1`) | GPL-3.0-only | produced by the pipeline documented here from a trace of a compression run of `enwik9` |
+| `tf/tree_upstream/prof_input/`, the PGO training text of upstream | **Wikipedia contributors** | **GFDL / CC-BY-SA, not GPL** | an excerpt of `enwik9`, inherited from upstream. The modification notice of `cmix-neif-3.1` does not extend to it |
 
 ## 6. Obligations under GPL-3, and how this package meets them
 
-1. **One copyleft chain.** fx2-cmix-transformer, cmix-neif-1.0 and
-   cmix-neif-beehive are GPL-3, and so is every file of this directory outside
+1. **One copyleft chain (`GPL-3.0-only`, OSI-approved & Free Software).**
+   fx2-cmix-transformer, cmix-neif-1.0, cmix-neif-beehive, cmix-neif-2.0 and
+   **`cmix-neif-3.1`** are GPL-3, and so is every file of this directory outside
    the exceptions named at the top.
 2. **All upstream copyright and licence notices are left unchanged.** The
    upstream training tree is redistributed in `tf/tree_upstream/`, verbatim,
    with its own `LICENSE`; not one of its 189 files was edited. The files of
    cmix-neif sit beside it in `tf/tree_overlay/`, never merged into it.
 3. **Modification notice** (GPL-3 section 5a): the files taken from
-   cmix-neif-beehive name their source file and mark the changes of this
-   version with `# 2.0`; `README.md` section 10 lists the changes against the
-   training of cmix-neif-1.0.
-4. **No copyright claim is made over inherited code.** The claim of
-   Marcus Wölk (Marcus Woelk) covers the 2026 modifications only.
+   cmix-neif-beehive name their source file and mark the `2.0` changes with
+   `# 2.0`; `README.md` section 10 lists the changes against the training of
+   cmix-neif-1.0, and `tf/3_train/export/np2/tf1_np_codec.cpp`, `../CHANGES.md`,
+   and `../AUTHORS` document the November 2026 `cmix-neif-3.1` modifications by
+   **Oleksandr Dreval**.
+4. **No copyright claim is made over inherited code.** Copyright (C) 2026
+   **Oleksandr Dreval** (<https://github.com/OleksandrDreval>) covers the
+   November 2026 `cmix-neif-3.1` modifications only; Copyright (C) 2026 Marcus
+   Wölk (Marcus Woelk) covers the October 2026 `cmix-neif-1.0` / `cmix-neif-2.0`
+   modifications.
 
 ## 7. Open points
 

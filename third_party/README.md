@@ -16,7 +16,8 @@ in the files themselves; the full licence texts they refer to are here.
 `src/ds/SmallVector.h` was changed further for this entry; the notice at its
 top lists the changes.
 
-Everything else in this package is GPL-3, not "or later" (see the licence
-section of `README.md`, `LICENSE` and `NOTICE.md`), except the Wikipedia
+Everything else in `cmix-neif-3.1` is distributed under **GPL-3.0-only** (an
+OSI-approved Free Software license, not "or later"; see `AUTHORS`, the licence
+section of `../README.md`, `../LICENSE` and `../NOTICE.md`), except the Wikipedia
 excerpts in `prof_input/` and `training/tf/tree_upstream/prof_input/`, which are
-under the GFDL and CC BY-SA (see `NOTICE.md`).
+under the GFDL and CC BY-SA (see `../NOTICE.md`).

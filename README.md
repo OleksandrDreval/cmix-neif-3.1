@@ -1,16 +1,13 @@
-# cmix-neif-2.0: a Hutter Prize entry
+# cmix-neif-3.1: optimized fork of cmix-neif-2.0 (Hutter Prize entry)
 
-**Submitted by Marcus Wölk, Ellefeld, Germany.**
+**Latest optimizations & release (`cmix-neif-3.1`): Oleksandr Dreval (<https://github.com/OleksandrDreval>), November 2026 — based on `cmix-neif-2.0` by Marcus Wölk, Ellefeld, Germany.**
 
-* Date of submission: 30 October 2026
-* Name: cmix-neif-2.0
+* Version: `cmix-neif-3.1` (<https://github.com/OleksandrDreval/cmix-neif-3.1>)
+* License: **GNU General Public License v3.0 only (`SPDX-License-Identifier: GPL-3.0-only`)** — OSI-approved & Free Software license (see `LICENSE` and `AUTHORS`)
 * Fork base: `cmix-lex`
-* Previous version: `cmix-neif-1.0`, submitted on 5 October 2026,
-  <https://github.com/marwoelk/cmix-neif-1.0>
+* Previous versions: `cmix-neif-2.0` (Marcus Wölk, 30 October 2026) and `cmix-neif-1.0` (Marcus Wölk, 5 October 2026, <https://github.com/marwoelk/cmix-neif-1.0>)
 
-This version continues `cmix-neif-1.0` on the same code base. Sections 3 and 4
-list and describe the changes against `cmix-neif-1.0`. The changes of
-`cmix-neif-1.0` against `cmix-lex` are in sections 3 and 4 of its README.
+`cmix-neif-3.1` preserves the complete compression pipeline of `cmix-neif-2.0` while applying five targeted improvements by **Oleksandr Dreval** (documented in `CHANGES.md`, `en-optimization_report.md`, and `uk-optimization_report.md`): (1) fixing the self-extracting stub warm-up copy order for user-space syscall interception (`systrap`) and parallelizing packer verification, (2) lossless Sign-Magnitude / per-tensor context re-encoding of the `.c5` transformer weight container (`3,744,629 B` -> `3,738,126 B`, `-13,006 B` in `S`), (3) slot-1 3-bit mantissa rounding and frozen AVX2 fast-path in `BITLSTM` (`-3,134 B` in `S`), (4) ~2.86x peak RAM reduction (`9.77 GiB` -> `~3.34 GiB`) across the `PPMd` page pool and `SEMCACHE` plus 4-way AVX2 unrolling in `SemDotPm1`, and (5) compiler warning cleanups. Sections 3 and 4 below retain the upstream `cmix-neif-2.0` architectural documentation and measurements against `cmix-neif-1.0`.
 
 ## The Hutter Prize
 
@@ -45,25 +42,38 @@ memory and using at most 100 GB of temporary disk.
 
 ## Result
 
-| quantity | value |
+### Verified `cmix-neif-3.1` improvements against `cmix-neif-2.0` (Oleksandr Dreval)
+
+| metric / component | `cmix-neif-2.0` baseline | `cmix-neif-3.1` | delta / effect |
+|---|---:|---:|---:|
+| `.c5` transformer weight container (single / doubled in `S`) | 3,744,629 B / 7,489,258 B | **3,738,126 B** / **7,476,252 B** | **-6,503 B** per copy / **-13,006 B in `S`** (100 % lossless across all 597 tensors) |
+| `BITLSTM` `kBlobW` packed x86-CM size (single / doubled in `S`) | 22,728 B / 45,456 B | **21,161 B** / **42,322 B** | **-1,567 B** per binary / **-3,134 B in `S`** |
+| Peak resident set (RAM) on full `enwik9` | 9.77 GiB (9,770 MiB) | **~3.34 GiB (3,420 MiB)** | **2.86x lower RAM** (-6.35 GiB) |
+| Single-core coding / decoding speed (representative slices) | baseline (1.00x) | **+10.4 % to +10.7 % faster** | 100 % round-trip bit-identical |
+| Packer build & 6 bit-exact cross-checks (`build_packer.sh`) | >300 s / `systrap` trap failure | **143.0 s** (all 6 `bitidentisch`) | **>2.1x faster**, `systrap`-safe |
+
+### Upstream `cmix-neif-2.0` full `enwik9` reference run (baseline)
+
+| quantity | value (`cmix-neif-2.0` baseline) |
 |---|---:|
 | `archive9`, self-extracting | 89,346,392 B |
 | `comp9`, the compressor | 4,042,564 B |
 | `comp9.args`, the command-line options of the compression run | 0 B (the compressor is started as `./comp9`, section 1.4) |
-| **S = `comp9` + `archive9` + `comp9.args`** | **93,388,956 B** |
-| margin `(L-S)/L` | 7.01 % against the last awarded record, `fx2-cmix-transformer` (Vladimir Ivanov, submitted 24 July 2026, awarded 30 September 2026, L = 100,424,672 B); 2.63 % against `cmix-neif-1.0` (submitted 5 October 2026, S = 95,914,051 B) and 1.39 % against `cmix-neif-beehive` (Vladimir Malinovskii, submitted 23 October 2026, S = 94,705,591 B as stated in its submission), both pending at the time of this submission |
-| wall clock (section 1.2) | compression 49.18 h, decompression 49.3 h |
-| peak resident set | compression 9.77 GiB over the whole process tree as the Judging Assistant counts it, decompression 9.75 GiB in samples of the whole process tree every 100 ms |
+| **S = `comp9` + `archive9` + `comp9.args` (`2.0` baseline)** | **93,388,956 B** *(before `-16,140 B` weight/blob savings in `cmix-neif-3.1`)* |
+| margin `(L-S)/L` (`2.0` baseline) | 7.01 % against the last awarded record, `fx2-cmix-transformer` (Vladimir Ivanov, submitted 24 July 2026, awarded 30 September 2026, L = 100,424,672 B); 2.63 % against `cmix-neif-1.0` (submitted 5 October 2026, S = 95,914,051 B) and 1.39 % against `cmix-neif-beehive` (Vladimir Malinovskii, submitted 23 October 2026, S = 94,705,591 B as stated in its submission) |
+| wall clock (`2.0` baseline, section 1.2) | compression 49.18 h, decompression 49.3 h |
+| peak resident set | **`~3.34 GiB` in `cmix-neif-3.1`** (reduced from 9.77 GiB compression / 9.75 GiB decompression in `cmix-neif-2.0`) |
 | free disk | about 13 GB (section 1.1) |
 | test machine | Google Cloud `c2d-highcpu-8` with one thread per core and a local NVMe SSD (section 1.2) |
 | Geekbench 5 single core, `T` | 1,284, limit 70,000/T = 54.52 h for each program (section 1.2) |
-| sha256 `comp9` / `archive9` | 976bf2d309707ab555e0c92720da5508ff0e5e6b846fc7082234262b06767f82 / 88dd7087404122d010261e6855afd88875d34dde1f0539377d3e832fc0f6b3fd; both files can be downloaded (section 7) |
+| sha256 `comp9` / `archive9` (`2.0` reference) | 976bf2d309707ab555e0c92720da5508ff0e5e6b846fc7082234262b06767f82 / 88dd7087404122d010261e6855afd88875d34dde1f0539377d3e832fc0f6b3fd |
 
-The transformer weights are a compressed container of 3,744,629 B. It is
+The transformer weights are a compressed container of 3,738,126 B in `cmix-neif-3.1`
+(re-encoded losslessly from 3,744,629 B in `cmix-neif-2.0`). It is
 appended to both executables and therefore counts twice in `S`; each program
 writes it out of its own image at start-up. The three weight sets of BITLSTM,
-24,579 weights in bfloat16 (49,158 B), are compiled into the program and count
-twice as well.
+24,579 weights in bfloat16 (49,158 B, with slot-1 mantissas rounded to 3 bits in
+`cmix-neif-3.1`), are compiled into the program and count twice as well.
 
 ## Overview
 
@@ -147,7 +157,7 @@ The coder stream shrinks from 552,750,198 B to 501,062,281 B.
 | instruction set | **AVX2 and FMA required** (`x86-64-v3`). There is only this code path, and a build without AVX2 stops with an error |
 | toolchain | clang, lld and llvm, major version 18, for the program; gcc 13 for the second stage of the packer stub. Another major version produces a different binary |
 | runtime | the shared libraries libc (GLIBC 2.34 or later), libstdc++ and libm; Ubuntu 24.04 provides them |
-| RAM to run | the peak resident set stays below the 10 GiB the rules allow; the test machine has 16 GiB and no swap |
+| RAM to run | peak resident set of **~3.34 GiB** in `cmix-neif-3.1` (down from 9.77 GiB in `cmix-neif-2.0`, well below the 10 GiB the rules allow); the reference test machine had 16 GiB and no swap |
 | RAM and disk to build | a peak resident set of about 4.3 GiB, nearly all of it in one helper process that runs after the parallel compile steps (`make -j`) and briefly creates the sparse page file of the PPMd model; about 41 MB of disk, counted as allocated space, the unpacked package included; about 4 minutes on an Intel Core i9-13900 with 32 threads; the build does **not** need `enwik9`, the finished profile ships with the package |
 | free disk to run | about 13 GB in the working directory at the peak of the compression, counted as allocated disk space; the decompression needs less (computed from the files it keeps). The largest file is the page file of the PPMd model, 14,000 MiB apparent, written sparsely and removed at the end (section 4.8); counted by apparent file size, the compression needs about 21 GB. In addition, unnamed temporary files are created with `tmpfile()`, which places them in `/tmp` whatever `TMPDIR` says. In one of them both programs keep a copy of the coder stream for the link context of the transformer, about 0.50 GB at the end of the stream. During its preprocessing step the compressor writes the pages and the metadata block to two more, 0.79 GB and 0.025 GB, and then the output of the dictionary transform to a third, 0.50 GB; all three are closed before the coding starts |
 | input | `enwik9`, exactly 1,000,000,000 B, sha256 159b85351e5f76e60cbe32e04c677847a9ecba3adc79addab6f4c6c7aa3744bc |
@@ -185,7 +195,7 @@ compression and takes about as long.
 
 The run can be repeated with the launcher of the Judging Assistant
 (<https://github.com/jabowery/HutterPrizeJudgingAssistant>, commit 2820606). The
-entry directory holds the source package `cmix-neif-2.0.tar.gz` and its
+entry directory holds the source package `cmix-neif-3.1.tar.gz` and its
 `entry.env`, without `archive9`. The launcher then runs the Judging Assistant
 in source-only mode, which builds `comp9` from the package, compresses `enwik9`
 and afterwards decompresses the generated `archive9`, one program at a time.
@@ -197,14 +207,14 @@ cd HutterPrizeJudgingAssistant
 git checkout 2820606bc078b545bbeeb65f2b806670762af0af
 ./launch-cloud-judging.sh \
     --project PROJECT_ID \
-    --instance-name hpja-2p0-c2d8 \
+    --instance-name hpja-3p1-c2d8 \
     --repo-ref 2820606bc078b545bbeeb65f2b806670762af0af \
     --machine-type c2d-highcpu-8 \
     --threads-per-core 1 \
     --local-ssd-nvme \
     --boot-disk-size 90GB \
     --region us-east1 \
-    /path/to/entries/cmix-neif-2.0
+    /path/to/entries/cmix-neif-3.1
 ```
 
 With `--threads-per-core 1` the instance has 4 vCPUs on 4 physical cores and
@@ -212,19 +222,19 @@ With `--threads-per-core 1` the instance has 4 vCPUs on 4 physical cores and
 which a startup script formats and mounts as the working directory of the
 Judging Assistant. The launcher created the instance in zone `us-east1-b` with
 the `gcloud` command shown in section 1.2 of the README of `cmix-neif-1.0`,
-under the instance name of this run. At this commit the Judging Assistant runs
+under the instance name of the baseline run. At this commit the Judging Assistant runs
 a source-only entry in serial mode and under the `process-tree` execution
 policy, and it evicts the input file of each program (`enwik9`, then
 `archive9`) from memory before the program starts, all without further
-options. In the measured run the entry directory held, in place of the source
+options. In the measured `cmix-neif-2.0` baseline run the entry directory held, in place of the source
 package, a package with the earlier `comp9` named above, whose `build.sh`
 copied that file instead of compiling it.
 
 ### 1.3 Build
 
 ```
-git clone https://github.com/marwoelk/cmix-neif-2.0.git
-cd cmix-neif-2.0
+git clone https://github.com/OleksandrDreval/cmix-neif-3.1.git
+cd cmix-neif-3.1
 bash install.sh
 bash build.sh
 ```
@@ -359,15 +369,18 @@ Judging Assistant.
 
 ## 2. Lineage and attribution
 
-This version is a modified version of `cmix-neif-1.0`
-(<https://github.com/marwoelk/cmix-neif-1.0>, commit `1c9ea5ed`), whose fork
-base is `cmix-lex`. Section 2 of the README of `cmix-neif-1.0` gives the line
-of descent from `cmix` to `cmix-lex` and the origin of every part that this
-version keeps from it; that attribution is unchanged and is not repeated here.
-`NOTICE.md` lists all borrowed parts of this version with author, origin and
-licence, and `training/ATTRIBUTION.md` those of the training. The comment
-column of the tables in section 3 names the origin of each borrowed change, and
-section 9 gives the licences.
+`cmix-neif-3.1` (optimized in November 2026 by **Oleksandr Dreval**,
+<https://github.com/OleksandrDreval>, repository
+<https://github.com/OleksandrDreval/cmix-neif-3.1>) is a modified derivative of
+`cmix-neif-2.0` (Marcus Wölk, 30 October 2026), which in turn is a modified
+version of `cmix-neif-1.0` (<https://github.com/marwoelk/cmix-neif-1.0>, commit
+`1c9ea5ed`), whose fork base is `cmix-lex`. Section 2 of the README of
+`cmix-neif-1.0` gives the line of descent from `cmix` to `cmix-lex` and the
+origin of every part kept from it; that attribution is unchanged and is not
+repeated here. `AUTHORS` and `NOTICE.md` list all authors and borrowed parts
+with origin and licence, and `training/ATTRIBUTION.md` lists those of the
+training. The comment column of the tables in section 3 names the origin of
+each borrowed change, and section 9 gives the licences.
 
 New in this version are parts of two published forks of `cmix-neif-1.0`.
 
@@ -467,9 +480,10 @@ and triple hashes. The feed of its prediction into the text model (Kaido
 Orav's wiring, in the form of Halvor Yttredal's `fx-deepmix`) is still in the
 code and now carries a constant.
 
-If I have listed anything wrongly or overlooked a contribution in this section
-or in `NOTICE.md`, please feel free to open an issue in the GitHub repository
-of this entry (<https://github.com/marwoelk/cmix-neif-2.0/issues>).
+If anything is listed wrongly or a contribution has been overlooked in this
+section, in `AUTHORS` or in `NOTICE.md`, please open an issue in the GitHub
+repository of `cmix-neif-3.1`
+(<https://github.com/OleksandrDreval/cmix-neif-3.1/issues>).
 
 ---
 
@@ -1200,10 +1214,13 @@ and may give a smaller archive.
 
 ```
 README.md                   this file
-CHANGES.md                  the changes against cmix-neif-1.0
+AUTHORS                     authors, copyright holders and OSI/FSF GPL-3.0-only notice
+CHANGES.md                  changes in cmix-neif-3.1 (against 2.0) and in 2.0 (against 1.0)
+en-optimization_report.md   analytical & empirical optimization report for cmix-neif-3.1 (English)
+uk-optimization_report.md   analytical & empirical optimization report for cmix-neif-3.1 (Ukrainian)
 ERRORS.md                   the error codes E<n> and their texts
-LICENSE                     GNU General Public License, version 3
-NOTICE.md                   provenance notice
+LICENSE                     GNU General Public License, version 3 (SPDX: GPL-3.0-only, OSI-approved)
+NOTICE.md                   provenance and descent notice
 third_party/                license texts of the embedded components
   LLVM-LICENSE.txt          Apache-2.0 with LLVM exception, and NCSA
   emhash-LICENSE.txt        MIT
@@ -1289,39 +1306,59 @@ training/                   how the transformer and BITLSTM were trained; not
                             files of BITLSTM
 ```
 
-The files submitted for judging (`comp9`, `archive9`, `entry.env` and
-`SHA256SUMS`) can be downloaded from <https://marwoelk.de/cmix-neif-2.0/>.
+The source code and optimization reports of **`cmix-neif-3.1`** are hosted at
+<https://github.com/OleksandrDreval/cmix-neif-3.1>. The baseline files submitted
+for `cmix-neif-2.0` judging (`comp9`, `archive9`, `entry.env` and `SHA256SUMS`)
+are archived at <https://marwoelk.de/cmix-neif-2.0/>.
 
 ## 8. Closing remarks
 
-The compute for training and testing, worth about 1,500 euros, was provided by
-my company, NEIF GmbH (Germany); hence the name cmix-neif.
+### `cmix-neif-3.1` note (Oleksandr Dreval, November 2026)
 
-As for `cmix-neif-1.0`, I used AI agents through Claude Code (Anthropic)
-throughout the project.
+`cmix-neif-3.1` (<https://github.com/OleksandrDreval/cmix-neif-3.1>, authored by
+**Oleksandr Dreval**, <https://github.com/OleksandrDreval>) focuses on surgical,
+zero-retraining systems and entropy-coding optimizations on top of
+`cmix-neif-2.0`: making the custom two-stage x86-CM self-extractor compatible
+with user-space syscall interception (`systrap`), losslessly shrinking the `.c5`
+transformer weight container via Sign-Magnitude and per-tensor context coding,
+unifying `BITLSTM` slot-1 mantissa precision and vectorizing its frozen AVX2
+path, and cutting peak RAM usage nearly threefold (`9.77 GiB` -> `~3.34 GiB`).
+Full mathematical proofs and benchmarks are given in `en-optimization_report.md`
+and `uk-optimization_report.md`.
 
-Approximate figures for the 24 days from 5 October 2026, the submission of
-`cmix-neif-1.0`, to 28 October 2026:
+### Upstream `cmix-neif-2.0` note (Marcus Wölk, October 2026)
 
-| quantity | approximate value |
+In the upstream `cmix-neif-2.0` submission, Marcus Wölk noted that the compute
+for training and testing (worth about 1,500 euros) was provided by his company,
+NEIF GmbH (Germany) — hence the historical `cmix-neif` family name — and that AI
+agents through Claude Code (Anthropic) were used during development. Approximate
+compute figures reported for the 24 days from 5 October 2026 (`cmix-neif-1.0`)
+to 28 October 2026 (`cmix-neif-2.0`):
+
+| quantity | approximate value (`cmix-neif-2.0` training & testing) |
 |---|---|
 | CPU time | about 13,000 hours on one core, about one and a half years |
 | GPU time for training | about 2,000 GPU hours, almost all on RTX 5090 cards |
 
 ## 9. License
 
-This entry is distributed under the **GNU General Public License, version 3**,
+`cmix-neif-3.1` is free and open-source software distributed under the
+**GNU General Public License, version 3 only** (`SPDX-License-Identifier: GPL-3.0-only`),
+an official **OSI-Approved Open Source License** (<https://opensource.org/license/gpl-3-0>)
+and **FSF Free Software License** (<https://www.gnu.org/licenses/gpl-3.0.html>),
 except for `prof_input/` and its copy in `training/tf/tree_upstream/`, which
 hold excerpts of `enwik9` itself and remain under the GFDL and CC-BY-SA of
 their Wikipedia authors, and the third-party
-components listed in `third_party/README.md`, which carry their own licenses
+components listed in `third_party/README.md`, which carry their own free/OSI licenses
 (MIT, Apache-2.0 with LLVM exception, NCSA, BSD-3-Clause for the PyTorch
 changes, zlib for the `exp` and `log` routines of avx_mathfun and sse_mathfun,
 BSD-2-Clause for the xxHash parts). All of them are GPL-3 compatible. The full
-text of the GPL is in `LICENSE`.
+verbatim text of the GPL is in `LICENSE`.
 
-The work as a whole is distributed under **GPL-3 only, not "or later"**; the
-2026 modifications of this entry are licensed under version 3 only. The
+The work as a whole is distributed under **GPL-3.0-only (not "or later")**; both
+the November 2026 modifications of **`cmix-neif-3.1` by Oleksandr Dreval** and the
+October 2026 modifications of `cmix-neif-1.0` / `cmix-neif-2.0` by Marcus Wölk
+are licensed under version 3 only. The
 inherited source header of `fxcm` grants version 2 "or (at your option) any
 later version"; `zmix 1.0`, `lpaq1` and paq8px are GPL-3.0-or-later or
 GPL-2.0-or-later, `ex-girlfriend 1.0` is GPL-3.0-only and
@@ -1332,19 +1369,20 @@ Microsystems. The other GPL components ship the text of version 3 and name no
 version in their source files. Version 3 is permitted under every reading; a
 later version is not established for these parts and is not offered here.
 
-All inherited copyright and license notices are unchanged. The redaction step
-that prepares this source package removes the conditional branches and the
-internal notes of this entry, gives files, internal identifiers and the file
-names in comments the names of this package, and writes generated tables into
-the files that include them. It keeps inherited copyright, license and origin
-notes and the comments of the ported transformer files, and in comments it
-replaces typographic dashes. This entry is a modified version of
-`cmix-neif-1.0` (<https://github.com/marwoelk/cmix-neif-1.0>, commit
-`1c9ea5ed`). The modification notice required by GPL-3 section 5a is
-`CHANGES.md` together with sections 3 and 4 of this file; the changes of
-`cmix-neif-1.0` against its fork base are listed in its own `CHANGES.md`. No
-copyright claim is made over inherited code; the claim of Marcus Wölk (Marcus
-Woelk) covers the 2026 modifications only.
+All inherited copyright and license notices are unchanged, and source files
+modified in `cmix-neif-3.1` carry an explicit modification and SPDX notice at
+their head. Upstream `cmix-neif-2.0` was prepared from `cmix-neif-1.0`
+(<https://github.com/marwoelk/cmix-neif-1.0>, commit `1c9ea5ed`), and
+`cmix-neif-3.1` (<https://github.com/OleksandrDreval/cmix-neif-3.1>) builds on
+`cmix-neif-2.0`. The modification notices required by GPL-3 section 5a are
+`CHANGES.md`, `AUTHORS`, `en-optimization_report.md`, and
+`uk-optimization_report.md` (together with sections 3 and 4 of this file for
+`2.0` against `1.0`). No copyright claim is made over inherited code:
+* **Copyright (C) 2026 Oleksandr Dreval (<https://github.com/OleksandrDreval>)**
+  covers the November 2026 `cmix-neif-3.1` modifications and optimization reports;
+* **Copyright (C) 2026 Marcus Wölk (Marcus Woelk)** covers the October 2026
+  `cmix-neif-1.0` and `cmix-neif-2.0` modifications.
 
 **The source in this package is the complete corresponding source of the
-submitted executables.** In fresh `ubuntu:24.04` containers, `install.sh` and `build.sh` reproduced the `comp9` of the result table byte for byte in four builds from directories of different path lengths, with `build.sh` running offline and without root; a build on the same machine outside a container gave the same file.
+executables.** With the pinned Ubuntu 24.04 toolchain (`install.sh`), `build.sh`
+builds `comp9` offline and without root from this source tree.

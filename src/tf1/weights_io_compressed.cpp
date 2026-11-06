@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // Origin: fx2-cmix-transformer by Vladimir Ivanov, GPL-3.0, file cpp_infer/src/weights_io_compressed.cpp.
 // Ported and modified for this entry in 2026; the changes are listed in
 // sections 3 and 4 of README.md and of the README of cmix-neif-1.0.
@@ -129,7 +132,7 @@ namespace fx2 {
 
 namespace {
 
-[[noreturn]] void die(const char* fmt, ...) {
+[[maybe_unused]] [[noreturn]] void die(const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
   std::fprintf(stderr, "\n");
@@ -139,7 +142,7 @@ namespace {
   std::exit(1);
 }
 
-size_t dtype_size(uint8_t dtype) {
+[[maybe_unused]] size_t dtype_size(uint8_t dtype) {
   switch (dtype) {
     case DT_I8:
       return 1;
@@ -210,7 +213,7 @@ struct RangeDecoder {
   }
 };
 
-void decode_i8_uniform15(const uint8_t* stream, size_t stream_len, int8_t* out,
+[[maybe_unused]] void decode_i8_uniform15(const uint8_t* stream, size_t stream_len, int8_t* out,
                          size_t count) {
   RangeDecoder rd(stream, stream_len);
   for (size_t i = 0; i < count; i++)
@@ -339,7 +342,9 @@ enum : uint32_t {
   CNT_LIMIT_PLANE01 = 1023,  // v4: byte planes 0 and 1 of ENC_PLANE4
   CNT_LIMIT_ZROW = 1023,     // v4: the zero-row flag of ENC_INT4
   CNT_LIMIT_TMPL = 255,      // v4: the three template flags of name/metadata
-  CNT_LIMIT_INT4W = 4095,    // v5: the 24 width-context int4 trees
+  CNT_LIMIT_INT4W = 1535,    // v5+: per-name 12 width-context int4 magnitude trees
+  CNT_LIMIT_SIGN = 32767,    // shared adaptive sign bit of non-zero int4 weights
+  CNT_LIMIT_BF16C_HI = 511,  // per-name counting hi-byte tree of ENC_BF16C
   CNT_LIMIT_F32HC = 255,     // v5 + K: the high-byte trees of ENC_F32HC
 };
 
@@ -427,28 +432,34 @@ void FrischCN(CountNode* p, size_t n) {
 // the models of load_v2 that this container reaches
 struct ModelleId {
   uint8_t meta_prev;
-  CountNode zrow, tname, tblock, tmeta;
+  CountNode zrow, tname, tblock, tmeta, sign_int4w;
   CountNode cmeta[256 * 256];   // order-1 metadata trees
   CountNode cplane[2 * 256];    // byte planes 0 and 1 of ENC_PLANE4
   uint16_t plane[4 * 256];      // byte planes 2 and 3 of ENC_PLANE4
   uint16_t bf16_hi[256];        // ENC_BF16
   uint16_t bf16_lo[256 * 256];
-  CountNode cint4w[24 * 16];    // ENC_INT4W, 24 width contexts
+  CountNode cint4w[kNamenN * 12 * 8];  // ENC_INT4W, 12 width contexts per canonical name (3-bit |q|)
   uint16_t f32hl[257 * 256];    // lo trees of ENC_F32HC
   CountNode* cname[65536];      // order-2 name trees, per context on first use
-  uint16_t* bf16c[kNamenN];     // ENC_BF16C trees per canonical name, on first use
+  uint16_t* bf16c[kNamenN];     // ENC_BF16C lo trees per canonical name, on first use
+  CountNode* bf16c_hi[kNamenN]; // ENC_BF16C hi counting tree per canonical name, on first use
   CountNode* f32hc[kNamenN];    // ENC_F32HC hi trees per canonical name, on first use
+  uint8_t* last_zrow;           // zero-row mask of immediately preceding ENC_INT4W tensor
+  size_t last_zrow_n;
 };
 
 // format NP, end of stream A (np_fresh_values of load_v2): the int4 trees,
 // the zero-row flag, the per-name trees of the row scales and, for NP2, the
 // f32 trees start fresh
 __attribute__((noinline, cold)) void NpFrisch(ModelleId* m) {
-  FrischCN(m->cint4w, 24 * 16);
+  FrischCN(m->cint4w, kNamenN * 12 * 8);
   m->zrow = CountNode();
+  m->sign_int4w = CountNode();
+  m->last_zrow_n = 0;
   Frisch16(m->f32hl, 257 * 256);
   for (int c = 0; c < kNamenN; c++) {
     if (m->bf16c[c]) Frisch16(m->bf16c[c], 257 * 256);
+    if (m->bf16c_hi[c]) FrischCN(m->bf16c_hi[c], 256);
     if (m->f32hc[c]) FrischCN(m->f32hc[c], 5 * 256);
   }
 }
@@ -475,6 +486,7 @@ __attribute__((noinline, cold)) void NpZiffern(const WTensor& t, uint8_t key, ui
 }
 
 WeightsFile LoadId(Reader& r, const char* path) {
+  (void)path;
   const uint32_t n_tensors = r.u32();
   const uint32_t nA = r.u32(), lenA = r.u32(), K = r.u32();
   // stream A starts after the header; its zero cache byte is not stored
@@ -483,13 +495,13 @@ WeightsFile LoadId(Reader& r, const char* path) {
   uint32_t* x = static_cast<uint32_t*>(std::calloc(nx, sizeof(uint32_t)));   // the carried number
   uint8_t* bufB = nullptr;   // stream B with its carried head
   ModelleId* m = static_cast<ModelleId*>(std::calloc(1, sizeof(ModelleId)));
-  m->zrow = m->tname = m->tblock = m->tmeta = CountNode();
+  m->zrow = m->tname = m->tblock = m->tmeta = m->sign_int4w = CountNode();
   FrischCN(m->cmeta, 256 * 256);
   FrischCN(m->cplane, 2 * 256);
   Frisch16(m->plane, 4 * 256);
   Frisch16(m->bf16_hi, 256);
   Frisch16(m->bf16_lo, 256 * 256);
-  FrischCN(m->cint4w, 24 * 16);
+  FrischCN(m->cint4w, kNamenN * 12 * 8);
   Frisch16(m->f32hl, 257 * 256);
 
   auto get_meta = [&]() -> uint8_t {
@@ -616,29 +628,35 @@ WeightsFile LoadId(Reader& r, const char* path) {
 
     switch (encoding) {
       case ENC_INT4W: {
-        // one zero-row flag per row, then the values through the tree of the
-        // width context (T, N over the coded rows, cs[k] column sums of |q|,
-        // n coded rows so far); a zero row stays as calloc left it
+        // one zero-row flag per row, then 3-bit |q| through the per-name width
+        // context tree plus shared adaptive sign bit; zero rows stay zeroed
+        std::free(m->last_zrow);
+        m->last_zrow = static_cast<uint8_t*>(std::calloc(rows ? rows : 1, 1));
+        m->last_zrow_n = rows;
         int8_t* out = reinterpret_cast<int8_t*>(t.data);
         uint64_t* cs = static_cast<uint64_t*>(std::calloc(cols, sizeof(uint64_t)));
         uint64_t n = 0, T = 0, N = 0;
         for (size_t r0 = 0; r0 < rows; r0++) {
           int8_t* row = out + r0 * cols;
-          if (dec.decode_cbit(&m->zrow, CNT_LIMIT_ZROW)) continue;
+          if (dec.decode_cbit(&m->zrow, CNT_LIMIT_ZROW)) {
+            m->last_zrow[r0] = 1;
+            continue;
+          }
           uint64_t rs = 0;
           for (size_t k = 0; k < cols; k++) {
-            uint64_t M = (T * 65536 + 64 * 190054) / (N + 64);
+            uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
             if (M < 1) M = 1;
-            uint64_t rr = (rs * 65536 + 64 * M) / (k + 64);
-            uint64_t cc = (cs[k] * 65536 + 64 * M) / (n + 64);
-            uint64_t b = (8 * rr * cc) / (M * 65536);
-            b = b < 8 ? 0 : (b > 8 + 23 ? 23 : b - 8);
-            int v = int(dec.decode_ctree(&m->cint4w[b * 16], 4, CNT_LIMIT_INT4W)) - 7;
+            uint64_t rr = (rs * 65536 + 16 * M) / (k + 16);
+            uint64_t cc = (cs[k] * 65536 + 16 * M) / (n + 16);
+            uint64_t b = (2 * rr * cc) / (M * 65536);
+            if (b > 11) b = 11;
+            uint32_t mag = dec.decode_ctree(&m->cint4w[(ci * 12 + b) * 8], 3, CNT_LIMIT_INT4W);
+            int v = int(mag);
+            if (mag && dec.decode_cbit(&m->sign_int4w, CNT_LIMIT_SIGN)) v = -v;
             row[k] = int8_t(v);
-            uint64_t a = uint64_t(v < 0 ? -v : v);
-            rs += a;
-            cs[k] += a;
-            T += a;
+            rs += mag;
+            cs[k] += mag;
+            T += mag;
             N++;
           }
           n++;
@@ -648,10 +666,10 @@ WeightsFile LoadId(Reader& r, const char* path) {
       }
       case ENC_BF16C:
       case ENC_F32HC: {
-        // bf16 values through a hi tree [0, 256) and lo trees [256 (1 + hi), ...);
-        // ENC_F32HC: the hi byte through counting trees per canonical name and
-        // column (index within the row, columns from 4 on share one tree), the
-        // lo byte through the shared trees f32hl
+        // ENC_BF16C: hi byte through counting tree per canonical name, lo byte
+        // through shift-5 trees per canonical name; zero-row scales skipped.
+        // ENC_F32HC: hi byte through counting trees per canonical name and
+        // column (columns from 4 on share one tree), lo byte through f32hl.
         const bool f32 = encoding == ENC_F32HC;
         uint16_t* s = m->f32hl;
         CountNode* hc = nullptr;
@@ -668,18 +686,30 @@ WeightsFile LoadId(Reader& r, const char* path) {
             b = static_cast<uint16_t*>(std::malloc(257 * 256 * sizeof(uint16_t)));
             Frisch16(b, 257 * 256);
           }
+          CountNode*& ch = m->bf16c_hi[ci];
+          if (!ch) {
+            ch = static_cast<CountNode*>(std::malloc(256 * sizeof(CountNode)));
+            FrischCN(ch, 256);
+          }
           s = b;
+          hc = ch;
         }
         for (size_t k = 0, j = 0; k < numel; k++) {
-          uint32_t hi = hc ? dec.decode_ctree(hc + (j < 4 ? j : 4) * 256, 8, CNT_LIMIT_F32HC)
-                           : dec.decode_tree(s, 8);
-          if (++j == cols) j = 0;
+          if (!f32 && k < m->last_zrow_n && m->last_zrow[k]) continue;
+          uint32_t hi;
+          if (f32) {
+            hi = dec.decode_ctree(hc + (j < 4 ? j : 4) * 256, 8, CNT_LIMIT_F32HC);
+            if (++j == cols) j = 0;
+          } else {
+            hi = dec.decode_ctree(hc, 8, CNT_LIMIT_BF16C_HI);
+          }
           uint32_t v = (hi << 8) | dec.decode_tree(&s[256 + hi * 256], 8);
           if (f32)
             reinterpret_cast<uint32_t*>(t.data)[k] = v << 16;
           else
             reinterpret_cast<uint16_t*>(t.data)[k] = uint16_t(v);
         }
+        m->last_zrow_n = 0;
         break;
       }
       case ENC_BF16: {
@@ -689,6 +719,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
           uint32_t lo = dec.decode_tree(&m->bf16_lo[hi * 256], 8);
           out[k] = uint16_t((hi << 8) | lo);
         }
+        m->last_zrow_n = 0;
         break;
       }
       case ENC_PLANE4: {
@@ -696,6 +727,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
           t.data[k] = uint8_t((k & 3) < 2
                                   ? dec.decode_ctree(&m->cplane[(k & 3) * 256], 8, CNT_LIMIT_PLANE01)
                                   : dec.decode_tree(&m->plane[(k & 3) * 256], 8));
+        m->last_zrow_n = 0;
         break;
       }
       case ENC_ROPE_SIN:
@@ -706,6 +738,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
         for (size_t pos = 0; pos < t.shape[0]; pos++)
           for (size_t col = 0; col < t.shape[1]; col++)
             out[pos * t.shape[1] + col] = sincosf_cuda(float(pos) * invf[col], cos_bias);
+        m->last_zrow_n = 0;
         break;
       }
       default:
@@ -718,8 +751,10 @@ WeightsFile LoadId(Reader& r, const char* path) {
   for (size_t c = 0; c < 65536; c++) std::free(m->cname[c]);
   for (int c = 0; c < kNamenN; c++) {
     std::free(m->bf16c[c]);
+    std::free(m->bf16c_hi[c]);
     std::free(m->f32hc[c]);
   }
+  std::free(m->last_zrow);
   std::free(m);
   std::free(bufB);
   std::free(x);
@@ -747,7 +782,7 @@ WeightsFile WeightsFile::load_compressed(const char* path) {
   // reader decodes (it was a second read of the file in the engine)
   unsigned long long h = 14695981039346656037ULL;
   for (size_t i = 0; i < n; i++) h = (h ^ buf[i]) * 1099511628211ULL;
-  if (h != 0xaec368ac6a568632ULL)
+  if (h != 0x7b5d6d235c69c947ULL)
     msg_stop(207)
 ;
   Reader r{buf + 8, n - 8, path};   // behind the magic (fixed by the fingerprint)

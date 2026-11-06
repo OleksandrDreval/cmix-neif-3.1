@@ -1,3 +1,7 @@
+/* Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+ * for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+ * SPDX-License-Identifier: GPL-3.0-only
+ */
 /* stub.c - stage 2 of the self-extraction stub: x86-aware
  * context-mixing unpacker (cm_core.h, with the exact address transform of
  * x86t.h in place of a BCJ filter) with a TRUNCATABLE encoder block.
@@ -133,6 +137,14 @@ void s2_main(long *sp, volatile cut_hdr_t *hp) {
   long fd, mfd, n;
   int j;
 
+  /* Warm-up data: a copy of this unpacker's flat image, with the
+   * address transform of the image; cm_decompress learns from it first and
+   * then overwrites out_buf.  Snapshot s2_base BEFORE any syscall executes
+   * inside the RWX stage-2 mapping (e.g. gVisor systrap patches syscall
+   * instructions in-place on first execution). */
+  memcpy(out_buf, s2_base, CM_WARM_N);
+  x86t_range(out_buf, 0, CM_WARM_T, CM_WARM_VA, (int)CM2_xt >> 1, +1);
+
   if (clen > sizeof(in_buf) || ilen > sizeof(out_buf) || dlen > ilen) s_exit(101);
   fd = s_open(selfpath, O_RDONLY, 0);
   if (fd < 0) s_exit(102);
@@ -144,11 +156,6 @@ void s2_main(long *sp, volatile cut_hdr_t *hp) {
   }
   sys6(SYS_close, fd, 0, 0, 0, 0, 0);
 
-  /* Warm-up data: a copy of this unpacker's flat image, with the
-   * address transform of the image; cm_decompress learns from it first and
-   * then overwrites out_buf. */
-  memcpy(out_buf, s2_base, CM_WARM_N);
-  x86t_range(out_buf, 0, CM_WARM_T, CM_WARM_VA, (int)CM2_xt >> 1, +1);
   if (!cm_decompress(in_buf, (size_t)clen, out_buf, (size_t)dlen)) s_exit(111);
   /* Undo the exact x86 address transform over the executable PT_LOADs of
    * the decoded image (ranges read from its own ELF header).  A range that

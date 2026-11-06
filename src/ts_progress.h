@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #ifndef TS_PROGRESS_H_
 #define TS_PROGRESS_H_
 #include "meld.h"
@@ -106,7 +109,6 @@ class Aut {
       if (kn < metablock::mk.RangZahl()) Einspeisen(kn);
     }
     if (metablock::mk.NachlaufEndet()) {
-      part_b_done_ = true;
       phase_ = kFertig;
       Bericht("Blockende");
     }
@@ -219,9 +221,10 @@ class Aut {
 
   void Bericht(const char*) {}
 
-  Phase phase_ = kBlock;
-  bool block_opened_ = false, line_has_tab_ = false, part_b_done_ = false, have_block_ = false;
-  unsigned long long guard_pos_ = 0;
+  [[maybe_unused]] Phase phase_ = kBlock;
+  [[maybe_unused]] bool block_opened_ = false;
+  bool have_block_ = false;
+  [[maybe_unused]] unsigned long long guard_pos_ = 0;
   std::vector<unsigned char> block_;
   Schaetzer sch_;
   Steigung stg_;                 // slope above the edge

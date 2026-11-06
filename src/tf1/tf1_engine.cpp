@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // Coder-side driver of the transformer.  Parts follow
 // fx2-cmix-transformer/src/predictor.cpp (Vladimir Ivanov, GPL-3); see
 // tf1_engine.h.
@@ -388,7 +391,7 @@ LOAD_PATH_ATTR Tf1Engine::Tf1Engine(const std::vector<bool>& vocab, const char* 
 
   // The coder always runs the optimized int8 engine; the fp32 reference path
   // is not used.
-  const bool use_ref = false;
+  const bool use_ref = false; (void)use_ref;
   impl_->opt = new fx2::opt::TransformerOpt(weights_path,
       fx2::opt::AttnKind::KVI8);
   {
@@ -536,20 +539,20 @@ const float* Tf1Engine::Step(const std::valarray<float>& ppmd,
   const bool last_of_piece = doc_break || teilb_docbreak || piece_faellig;
   const bool piece_cut = last_of_piece && !doc_break && !teilb_docbreak;
   if (piece_cut) {}
-  if (!ta_tok)
-  if (rule_view::z3_orig) {
-    const unsigned char* fr = nullptr;
-    const int n = rule_view::Frei(&fr);
-    for (int k = 0; k < n; ++k)
-      s.z3->Observe((unsigned char)s.byte_to_index[fr[k]], k + 1 == n && doc_break);
-  } else
-  {
-    const unsigned char* alt = nullptr;
-    const int n = redirect_table::tab.Alt(&alt);
-    for (int k = 0; k < n; ++k)
-      s.z3->Observe((unsigned char)s.byte_to_index[alt[k]],
-                    k + 1 == n && doc_break);
-    if (redirect_table::tab.FromBytes() && byte == 0x0a) rule_view::z3_orig = true;
+  if (!ta_tok) {
+    if (rule_view::z3_orig) {
+      const unsigned char* fr = nullptr;
+      const int n = rule_view::Frei(&fr);
+      for (int k = 0; k < n; ++k)
+        s.z3->Observe((unsigned char)s.byte_to_index[fr[k]], k + 1 == n && doc_break);
+    } else {
+      const unsigned char* alt = nullptr;
+      const int n = redirect_table::tab.Alt(&alt);
+      for (int k = 0; k < n; ++k)
+        s.z3->Observe((unsigned char)s.byte_to_index[alt[k]],
+                      k + 1 == n && doc_break);
+      if (redirect_table::tab.FromBytes() && byte == 0x0a) rule_view::z3_orig = true;
+    }
   }
   if (at_separator) s.z3->PageEnd(s.prompt->InRedirect());
   // Show the coded token to the gate automaton (same sequence on both sides).

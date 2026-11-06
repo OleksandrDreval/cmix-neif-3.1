@@ -1,4 +1,6 @@
-
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #ifndef HEADER_SORT_H_
 #define HEADER_SORT_H_
 #include "../meld.h"
@@ -50,7 +52,7 @@ static void hsort_put(char *out, size_t *o, const char *p, int len) {
 }
 
 // Guard: stop if an identifier lies outside the range the constants assume.
-static void idnum_guard(long long v, long long lo, long long hi,
+[[maybe_unused]] static void idnum_guard(long long v, long long lo, long long hi,
                               const char *what) {
   if (v < lo || v > hi) {
     fprintf(stderr, "guard - %s = %lld lies outside the "
@@ -60,20 +62,20 @@ static void idnum_guard(long long v, long long lo, long long hi,
   }
 }
 
-static void idnum_pad(char *out, size_t *o, long long v, int dig) {
+[[maybe_unused]] static void idnum_pad(char *out, size_t *o, long long v, int dig) {
   char b[24];
   for (int i = dig - 1; i >= 0; --i) { b[i] = (char)('0' + (int)(v % 10)); v /= 10; }
   memcpy(out + *o, b, (size_t)dig); *o += (size_t)dig;
 }
 
-static void idnum_dec(char *out, size_t *o, long long v) {
+[[maybe_unused]] static void idnum_dec(char *out, size_t *o, long long v) {
   char b[24]; int n = 0;
   if (v < 0) { out[(*o)++] = '-'; v = -v; }
   if (v == 0) b[n++] = '0';
   while (v) { b[n++] = (char)('0' + (int)(v % 10)); v /= 10; }
   for (int i = n - 1; i >= 0; --i) out[(*o)++] = b[i];
 }
-static long long idnum_num(const char *p, int len) {
+[[maybe_unused]] static long long idnum_num(const char *p, int len) {
   long long v = 0; int i = 0, neg = 0;
   if (len > 0 && p[0] == '-') { neg = 1; i = 1; }
   for (; i < len; ++i) v = v * 10 + (p[i] - '0');

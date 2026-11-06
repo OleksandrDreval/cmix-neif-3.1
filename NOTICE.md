@@ -1,8 +1,15 @@
-# Origin and changes
+# Origin and changes — `cmix-neif-3.1`
 
-This program is a derivative work and is distributed under the GNU General
-Public License (see `LICENSE`).  The copyright and licence notices in the
-individual source files are unchanged and remain in force.
+SPDX-License-Identifier: GPL-3.0-only
+
+`cmix-neif-3.1` (<https://github.com/OleksandrDreval/cmix-neif-3.1>) is a
+derivative work and is distributed as free and open-source software under the
+**GNU General Public License, version 3 only (`GPL-3.0-only`)** — an official
+OSI-Approved Open Source License (<https://opensource.org/license/gpl-3-0>) and
+FSF Free Software License (see `LICENSE` and `AUTHORS`). The copyright and
+licence notices in the individual upstream source files are unchanged and remain
+in force; files modified in `cmix-neif-3.1` carry an explicit modification and
+SPDX notice for **Oleksandr Dreval** (<https://github.com/OleksandrDreval>).
 
 ## Descent of the compressor
 
@@ -16,6 +23,8 @@ individual source files are unchanged and remain in force.
 | `fx2-cmix` | Kaido Orav, Byron Knoll | GPL-3 |
 | `cmix-lex`: the fork base, derived from `fx2-cmix` (Kaido Orav, Byron Knoll), with Kaido Orav's text model `fxcm_v26`; Hutter Prize 2026, awarded to Ibrahim Marcouch and Kaido Orav | Ibrahim Marcouch | GPL-3 |
 | **`cmix-neif-1.0`: the previous version of this entry**, on which this version is built (`github.com/marwoelk/cmix-neif-1.0`, commit `1c9ea5ed`); its changes against `cmix-lex` are listed in its `CHANGES.md` | Marcus Wölk | GPL-3 |
+| **`cmix-neif-2.0`**: the upstream Hutter Prize submission of 30 October 2026 (`SEMCACHE`, census transform, `cmix-neif-beehive` transformer integration, text-start and reversible rules, frozen 3-slot `BITLSTM`, and custom stage-1/stage-2 packer) | Marcus Wölk | GPL-3 |
+| **`cmix-neif-3.1`** (`github.com/OleksandrDreval/cmix-neif-3.1`): latest release — packer `systrap` warm-up fix and parallel verification, lossless `.c5` Sign-Magnitude / per-`ci` / `zrow` container re-encoding, `BITLSTM` slot-1 mantissa rounding and frozen AVX2 fast-path, `PPMd` + `SEMCACHE` ~2.86x RAM reduction and `SemDotPm1` AVX2 unrolling, and compiler warning cleanups | **Oleksandr Dreval** (<https://github.com/OleksandrDreval>) | GPL-3.0-only |
 | **`cmix-neif-beehive`** (`github.com/galqiwi/cmix-neif-beehive`, commit `92c07c0b`; a fork of `cmix-neif-1.0`): the architecture and training recipe of the transformer (attention residuals, one key and value head shared by all query heads, value embeddings, MLP width 1024, prior-logit head, weight rows of 2, 3 or 4 bits, quantization-aware training with a size term as the cool-down); the engine parts that implement them, adapted (`src/tf1/opt/attnres_mix.h`, the attention-residual reads, the depth mixture and the expansion of the shared key and value head with the value embeddings in `src/tf1/opt/model_opt.cpp`, the loader parts in `src/tf1/opt/arena_build.cpp`, the kernel of the shared key and value head in `src/tf1/opt/attn.cpp`, the prior-logit head in `src/tf1/opt/glue.cpp`); the prefetch depth of the dense kernels (`src/tf1/opt/qmat_dense.cpp`); the confidence of the transformer as context of a layer-0 mixer (`src/predictor.cpp`); the training scripts on which the trainer of this entry is built (`training/tf/3_train/tree/`, the export tools in `training/tf/3_train/export/`, each file naming its source file); the weights from which the training of the shipped transformer weights started | Vladimir Malinovskii | GPL-3 |
 | attention residuals (a softmax-weighted mixture of earlier sublayer outputs in place of the residual sum), *Attention Residuals*, arXiv 2603.15031, through `cmix-neif-beehive` | Kimi Team | - (a method) |
 | the online normalizer of the softmax, by which the engine evaluates the depth mixture of the attention residuals (`src/tf1/opt/model_opt.cpp`, `src/tf1/opt/attnres_mix.h`), through `cmix-neif-beehive` | M. Milakov, N. Gimelshein, *Online normalizer calculation for softmax* (2018, arXiv 1805.02867) | - (a method) |
@@ -112,10 +121,18 @@ nothing ships.
 
 ## Changes
 
-This version was changed in 2026 by Marcus Wölk (Marcus Woelk), first as
-`cmix-neif-1.0` and then as this version.  The changes of this version concern
+This program was modified in October 2026 by Marcus Wölk (Marcus Woelk), first
+as `cmix-neif-1.0` and then as `cmix-neif-2.0`, and subsequently optimized and
+released in November 2026 as **`cmix-neif-3.1`** by **Oleksandr Dreval**
+(<https://github.com/OleksandrDreval>, repository
+<https://github.com/OleksandrDreval/cmix-neif-3.1>, Copyright (C) 2026 Oleksandr
+Dreval, `GPL-3.0-only`; see `AUTHORS`, `CHANGES.md`, `en-optimization_report.md`,
+and `uk-optimization_report.md`). The changes of `cmix-neif-2.0` concern
 the semantic cache SEMCACHE, the census pages and their metadata block, the
 start of the text and reversible rules on the page text, the pre-trained
 transformer and BITLSTM, the mixer and the PPMd model, and the packer of the
-archive.  A build of the source published here reproduces the submitted
-compressor byte for byte.
+archive; the latest modifications of `cmix-neif-3.1` by Oleksandr Dreval concern
+the `systrap`-safe self-extracting stub and parallelized packer checks, the
+lossless `.c5` weight codec and re-encoded container, frozen `BITLSTM` AVX2
+execution and slot-1 rounding, `PPMd` and `SEMCACHE` ~2.86x RAM reduction and
+SIMD kernels, and build cleanliness.

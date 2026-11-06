@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // Per-bit LSTM correction head.  The contract is described in the header of
 // the same name.
 //
@@ -532,10 +535,7 @@ void Head::Build() {
   // no output reveals.  Same principle as the row-width check in Adjust()
   // below.
   {
-    const char* what = nullptr;
-    int want = 0, have = 0;
-    if (nhid > aux_n_hid) { what = "E42"; want = nhid; have = aux_n_hid; }
-    if (what != nullptr) {
+    if (nhid > aux_n_hid) {
       msg_stop(44)
 
 ;
@@ -564,11 +564,15 @@ void Head::Build() {
   // undefined behaviour even when the result is never dereferenced.  A few
   // dozen KB is not worth a class of bug that only shows up under -O3.
   // A head that never learns has no optimiser state.
-  h = Alloc(C); c = Alloc(C); hprev = Alloc(C); cprev = Alloc(C);
-  x = Alloc(inw); z = Alloc(C); sg = Alloc(C); a = Alloc(C);
-  gi = Alloc(C); gf = Alloc(C); gg = Alloc(C); go = Alloc(C); tc = Alloc(C);
-  pre = Alloc(4 * C); dpre = Alloc(4 * C); da = Alloc(C);
-  sd_ring = Alloc(kSdCap);
+  h = Alloc(C); c = Alloc(C);
+  x = Alloc(inw); z = Alloc(C); a = Alloc(C);
+  pre = Alloc(4 * C);
+  if (!frozen) {
+    hprev = Alloc(C); cprev = Alloc(C); sg = Alloc(C);
+    gi = Alloc(C); gf = Alloc(C); gg = Alloc(C); go = Alloc(C); tc = Alloc(C);
+    dpre = Alloc(4 * C); da = Alloc(C);
+  }
+  if (feat & kFeatSse) sd_ring = Alloc(kSdCap);
   // Nor window buffers and gradient accumulators.
   if (tbptt && !1) {
     const int W = wlen;
@@ -652,27 +656,31 @@ void Head::Forward() {
   for (int r = 0; r < C; r += 8) {
     const __m256 zv = _mm256_loadu_ps(z + r);
     const __m256 s = Sigmoid8(zv);
-    _mm256_storeu_ps(sg + r, s);
+    if (!frozen) _mm256_storeu_ps(sg + r, s);
     _mm256_storeu_ps(a + r, _mm256_mul_ps(zv, s));
   }
+  const float* const hp = frozen ? h : hprev;
   for (int k = 0; k < 4 * C; ++k) {
-    pre[k] = DotPadded(wih + k * C, a, C) + DotPadded(whh + k * C, hprev, C) +
+    pre[k] = DotPadded(wih + k * C, a, C) + DotPadded(whh + k * C, hp, C) +
              bg[k];
   }
+  const float* const cp = frozen ? c : cprev;
   for (int r = 0; r < C; r += 8) {
     const __m256 vi = Sigmoid8(_mm256_loadu_ps(pre + 0 * C + r));
     const __m256 vf = Sigmoid8(_mm256_loadu_ps(pre + 1 * C + r));
     const __m256 vg = Tanh8(_mm256_loadu_ps(pre + 2 * C + r));
     const __m256 vo = Sigmoid8(_mm256_loadu_ps(pre + 3 * C + r));
-    const __m256 cn = _mm256_fmadd_ps(vf, _mm256_loadu_ps(cprev + r),
+    const __m256 cn = _mm256_fmadd_ps(vf, _mm256_loadu_ps(cp + r),
                                       _mm256_mul_ps(vi, vg));
     const __m256 th = Tanh8(cn);
-    _mm256_storeu_ps(gi + r, vi);
-    _mm256_storeu_ps(gf + r, vf);
-    _mm256_storeu_ps(gg + r, vg);
-    _mm256_storeu_ps(go + r, vo);
+    if (!frozen) {
+      _mm256_storeu_ps(gi + r, vi);
+      _mm256_storeu_ps(gf + r, vf);
+      _mm256_storeu_ps(gg + r, vg);
+      _mm256_storeu_ps(go + r, vo);
+      _mm256_storeu_ps(tc + r, th);
+    }
     _mm256_storeu_ps(c + r, cn);
-    _mm256_storeu_ps(tc + r, th);
     _mm256_storeu_ps(h + r, _mm256_mul_ps(vo, th));
   }
   delta = DotPadded(wout, h, C) + bout;
@@ -982,8 +990,10 @@ unsigned int Adjust(unsigned int base_p, const float* stage1, int n_stage1,
     std::memcpy(s.wsh, s.h, sizeof(float) * (size_t)s.cells);
     std::memcpy(s.wsc, s.c, sizeof(float) * (size_t)s.cells);
   }
-  std::memcpy(s.hprev, s.h, sizeof(float) * (size_t)s.cells);
-  std::memcpy(s.cprev, s.c, sizeof(float) * (size_t)s.cells);
+  if (!s.frozen) {
+    std::memcpy(s.hprev, s.h, sizeof(float) * (size_t)s.cells);
+    std::memcpy(s.cprev, s.c, sizeof(float) * (size_t)s.cells);
+  }
 
   // ---- features ----
   const float p1 = (float)base_p / 65536.0f;
@@ -1037,10 +1047,11 @@ unsigned int Adjust(unsigned int base_p, const float* stage1, int n_stage1,
       const unsigned long long b = s.i >> 3;
       if (b != s.hid_byte) {
         s.hid_byte = b;
+        const int n8 = s.aux_n_hid & ~7;
         for (int r = 0; r < Head::nhid; ++r) {
           const float* pr = s.hidP + (size_t)r * s.aux_n_hid;
-          float acc = 0.0f;
-          for (int cc = 0; cc < s.aux_n_hid; ++cc) acc += pr[cc] * s.aux_hid[cc];
+          float acc = n8 ? DotPadded(pr, s.aux_hid, n8) : 0.0f;
+          for (int cc = n8; cc < s.aux_n_hid; ++cc) acc += pr[cc] * s.aux_hid[cc];
           s.hidC[r] = acc;
         }
       }

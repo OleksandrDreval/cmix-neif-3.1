@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // Changes in this file: van_layer_kv(), the `gelesen` ("read") flag with its
 // early exit in step() and set_gelesen(), for rows whose output is not read;
 // and the mlp.down density threshold, which can follow the layer's neuron
@@ -706,7 +709,8 @@ struct TransformerOptImpl : ZRow {
     }
     const int slot = static_cast<int>(tj % WIN);
     const int64_t nn = tj + 1;
-    if (!((3 & 2) && 1) && kind == AttnKind::KVF32) {
+    constexpr int kKvMask = 3;
+    if ((kKvMask & 2) == 0 && kind == AttnKind::KVF32) {
       {
         PSCOPE(PS_AT_INSERT);
         attn_kv_insert(kvf[vi], slot, kk, vv);

@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #ifndef ALIAS_CONTEXT_H_
 #define ALIAS_CONTEXT_H_
 
@@ -105,6 +108,7 @@ class Aut {
     const bool w_leer = (st_.articles > 100
                          && je_mb < (double)1);
     const int wacht = (w_link ? 1 : 0) + (w_leer ? 1 : 0);
+    (void)wacht;
   }
 
   const Stats& GetStats() const { return st_; }
