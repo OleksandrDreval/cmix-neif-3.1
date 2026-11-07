@@ -1,4 +1,6 @@
-
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #ifndef ARENA_ALLOC_H_
 #define ARENA_ALLOC_H_
 #include "meld.h"
@@ -17,8 +19,7 @@
 
 namespace arena {
 
-// Bump allocator for model tables: 64 MiB chunks, 2 MiB aligned and marked
-// for transparent huge pages.  Nothing is freed individually.
+// Bump allocator for model tables: 64 MiB chunks, demand-paged in 4 KiB pages.
 struct Bump {
   char* cur = nullptr;
   char* end = nullptr;
@@ -30,23 +31,12 @@ struct Bump {
   static const size_t kAlign = (size_t)64;
   static const size_t kChunk = ((size_t)64) << 20;
 
-  // Maps a new chunk of at least `mindestens` (minimum) bytes; the unaligned
-  // head and tail (`hinten`) of the mapping are unmapped again.
   void NeuerBlock(size_t mindestens) {
     size_t n = kChunk;
     if (n < mindestens) n = (mindestens + kChunk - 1) / kChunk * kChunk;
-    // Over-allocate by 2 MiB and keep the aligned part, so that
-    // MADV_HUGEPAGE can take effect at all.
-    const size_t kPmd = 2UL << 20;
-    n = (n + kPmd - 1) & ~(kPmd - 1);
-    char* raw = (char*)mmap(nullptr, n + kPmd, PROT_READ | PROT_WRITE,
-                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (raw == MAP_FAILED) { msg_note(40); abort(); }
-    char* base = (char*)(((size_t)raw + kPmd - 1) & ~(kPmd - 1));
-    if (base > raw) munmap(raw, (size_t)(base - raw));
-    size_t hinten = (size_t)(raw + n + kPmd - (base + n));
-    if (hinten) munmap(base + n, hinten);
-    madvise(base, n, MADV_HUGEPAGE);
+    char* base = (char*)mmap(nullptr, n, PROT_READ | PROT_WRITE,
+                             MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (base == MAP_FAILED) { msg_note(40); abort(); }
     PAGE_REGISTRY_ADD(base, n);
     cur = base;
     end = base + n;

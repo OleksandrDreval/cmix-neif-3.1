@@ -4,8 +4,8 @@
 # Rows whose path starts with 'REF:' are NOT in this package: they are large
 # artefacts, named by checksum (sha256; a prefix where only that is recorded).
 path	origin	sha256	size	purpose
-ATTRIBUTION.md	cmix-neif-3.1 (Oleksandr Dreval) / cmix-neif-2.0 (Marcus Woelk)	94e8f1abe104aa10ec5257ec9d9672c909d04de65d1e8971215252bd1f84a2c1	12585	authorship, licences, upstream URLs and commits
-README.md	cmix-neif-3.1 (Oleksandr Dreval) / cmix-neif-2.0 (Marcus Woelk)	632f2667b3eda07a837dd5d60e37a1bbd24ce0e4b5bddc710147cad76da623e0	29777	master guide
+ATTRIBUTION.md	cmix-neif-3.1 (Oleksandr Dreval) / cmix-neif-2.0 (Marcus Woelk)	4a64efbdf5ab5395f2380e56576aefb615ab2cd6d6594e1068bbe008c09269c3	12895	authorship, licences, upstream URLs and commits
+README.md	cmix-neif-3.1 (Oleksandr Dreval) / cmix-neif-2.0 (Marcus Woelk)	cbcb4c434dc7ae85cb359ee06f3ead8674128398186150d920e0043678e890c4	29880	master guide
 bitl/README.md	this entry	e02bf9b899dce14055a45e31e4388f49df0fa724a72e8c2b0e27c78a2e0a78b8	6083	BITLSTM: trace, zones, training, header
 bitl/record/SHA256SUMS	this entry	d012abc9ef826725289eaad97763980cc5bd794824ca8e94d110c838fc6bd1e1	230	checksums of the three weight sets
 bitl/record/meta.nblb	this entry	729cbf956bc0e6eb6dbce9f36b6ed47299521643f5be0a2a3aafe4df3e60da1f	22426	BITLSTM weight set as compiled into the program (NBLB v2, bfloat16)
@@ -93,7 +93,7 @@ tf/3_train/export/export4/weights_compress_v3.py	cmix-neif-beehive (V. Malinovsk
 tf/3_train/export/export4/wpack2_bf16.py	cmix-neif-beehive (V. Malinovskii); changes of this entry marked # 2.0; base cmix-neif-1.0	c0002095b8ff68dcae9c112dc3db767907798d874a132d3b006a150f876df6ad	5657	export: bf16 rounding, formats v3 and v4, dead neurons, collapsed rows
 tf/3_train/export/export_v3_ar.py	cmix-neif-beehive (V. Malinovskii); changes of this entry marked # 2.0	199b37ded84833d837ff37e04336628e103829f72ee33de35ef390a39baa23db	7565	checkpoint to reference weight file
 tf/3_train/export/np2/np2_container.py	this entry; Python transcription of tf1_np_codec.cpp on weights_compress_v3.py	ed29466cbc574d4d9990dd4c4c9c970cfebc6380d9a7d601a757ec05d7aa6f8e	30845	writer and reader of the container formats NP and NP2 in Python
-tf/3_train/export/np2/tf1_np_codec.cpp	cmix-neif-2.0 (Marcus Woelk), modified in cmix-neif-3.1 by Oleksandr Dreval; encoder after fx2-cmix-transformer pysrc/weights_compress.py	80a558810c88dee4644f9b608d2dfe3e902b2d847b240d8535d9e2df8b9ee8c7	44530	writer of the container formats NP and NP2 in C++ (built in the development tree)
+tf/3_train/export/np2/tf1_np_codec.cpp	cmix-neif-2.0 (Marcus Woelk), modified in cmix-neif-3.1 by Oleksandr Dreval; encoder after fx2-cmix-transformer pysrc/weights_compress.py	53d3ed184bdd165b6d30a5c6df444f49b22b466d43e1e339cb3df946720f89f6	46277	writer of the container formats NP and NP2 in C++ (built in the development tree)
 tf/3_train/mlp_lift.py	this entry	a0abb5233323c3bc020a14ef8918bf408012cc879e7aa6a59521df30cccd37ac	1364	lifts all-zero weight rows before the quantization-aware stage
 tf/3_train/reproduce.sh	this entry	9d12a40b49a2982ec2297f487b7728a3cb9eacf3ed9e24143db0c78b8ea004b0	7086	runs the training chain stage by stage with the executed configurations
 tf/3_train/tree/arch.py	cmix-neif-beehive (V. Malinovskii); changes of this entry marked # 2.0	9814172434d28ee6aa9ec33d6db2d9a0a4805ffa8d1901b30ad567cb37f2e388	16900	training script of the transformer
@@ -358,5 +358,5 @@ REF:fp32/model.tch	this entry	0f08724b7a2bb1892a9e433afc9add5a66d9fbde207668dfbb
 REF:weights-poc8m_w2048.bin	this entry	fa0ea606ff8fda91784b6b3ae1c875ed5e6ed5f4a39e87cbf91d45403361392c	43087894	stage (e): reference weight file
 REF:weights-poc8m_w2048_pruned_v4.c4	this entry	38b7c162f1882ca6aedfa8f7831bb55b52d37582a3892a340605cf0c979b54e8	3769904	stage (e): container format v4
 REF:v5.c5	this entry	11ef8fdfaf85fbc15d3845a82e54f3c843397b05b4cc03e7d7fa50fdfd61f82b	3767643	stage (e): container format v5
-REF:weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5	cmix-neif-3.1 (losslessly re-encoded by Oleksandr Dreval from cmix-neif-2.0 729694cb..., 3744629 B)	51c9c08e978cbb5f4d848745bfa24cdfea925189d69793b2ab24ea579fa3011e	3738126	stage (e): the shipped container (format NP2), in the top-level directory of the entry
+REF:weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5	cmix-neif-3.1 (losslessly re-encoded by Oleksandr Dreval from cmix-neif-2.0 729694cb..., 3744629 B)	5be27b4da650a1442e862646629e8f2b6fb137ceccea468c7f1fb000e5716c92	3737194	stage (e): the shipped container (format NP2), in the top-level directory of the entry
 REF:spur.bin	this entry	-	277855252272	stage (f): trace of the BITLSTM inputs, 1,694,239,343 records

@@ -17,9 +17,10 @@ decompressor. It serves reproducibility and attribution for `cmix-neif-3.1`
    rerun bit-exactly and what cannot.
 2. **Attribution.** In **`cmix-neif-3.1`**, **Oleksandr Dreval**
    (<https://github.com/OleksandrDreval>) losslessly re-encoded the `.c5`
-   transformer weight container (`tf/3_train/export/np2/tf1_np_codec.cpp`) and
-   rounded slot-1 mantissas of `BITLSTM` (`../src/bit_head_weights.h`) without
-   retraining. Upstream, the architecture of the transformer and its training recipe
+   transformer weight container (`tf/3_train/export/np2/tf1_np_codec.cpp`, from
+   `3,744,629 B` to `3,737,194 B`) and rounded slot-1 mantissas + right-shifted
+   the second-half `kBlobW` nibble stream of `BITLSTM` (`../src/bit_head_weights.h`)
+   without retraining. Upstream, the architecture of the transformer and its training recipe
    are Vladimir Malinovskii's `cmix-neif-beehive`, whose weights were the start
    of the training in `cmix-neif-2.0` (Marcus Wölk); its trainer descends from Vladimir Ivanov's
    `fx2-cmix-transformer`; the design of BITLSTM comes from David Freelan's
@@ -64,8 +65,8 @@ training package: 488,038,367 tokens, 203,023,960,672 B of priors
 checkpoint (.tch) --> reference weight file (.bin) + manifest (.bin.json)
   |
   v (e) export at window 2048: bf16 rounding, v3, dead neurons, collapsed   tf/3_train/export/
-  |     rows zeroed, v4, v5, NP2 + cmix-neif-3.1 Sign-Magnitude/per-ci/zrow
-weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5  3,738,126 B, sha256 51c9c08e...
+  |     rows zeroed, v4, v5, NP2 + cmix-neif-3.1 lossless probability/zrow upgrades
+weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5  3,737,194 B, sha256 5be27b4d...
          (re-encoded losslessly from 3,744,629 B, sha256 729694cb... in 2.0;
                                                   appended to both executables)
 

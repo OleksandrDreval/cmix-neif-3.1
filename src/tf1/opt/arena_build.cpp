@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // Change in this file: mlp_width() and the mlp.up / mlp.down sites can take
 // the layer's neuron count from the tensor form instead of the constant DMLP
 // (layers with removed neurons); additive only.
@@ -46,7 +49,6 @@ void HugeBuf::alloc(size_t n) {
   bytes = (n + (size_t(2) << 20) - 1) & ~((size_t(2) << 20) - 1);
   void* m = MapNull(bytes);
   ::madvise(m, bytes, MADV_HUGEPAGE);
-  std::memset(m, 0, bytes);  // touch every page
   p = static_cast<uint8_t*>(m);
   PAGE_REGISTRY_ADD(p, bytes);
 }

@@ -53,11 +53,11 @@ namespace semantic_cache {
 // geometry (index and key ring of about 2.2 GB)
 constexpr int kD = 128;                // key dimensions
 constexpr int kL = 16;                 // SimHash tables
-constexpr int kB = 17;                 // bits per table
+constexpr int kB = 18;                 // bits per table
 constexpr int kM = 15;                 // newest entries kept per bucket
 constexpr int kFlip = 3;               // extra buckets per table
 constexpr int kProbe = kFlip + 1;      // buckets read per table
-constexpr int kNLog = 23;              // key ring of 2^kNLog entries
+constexpr int kNLog = 24;              // key ring of 2^kNLog entries
 constexpr uint32_t kN = 1u << kNLog;
 constexpr int kK = 32;                 // neighbours of a lookup
 constexpr int kSk = 96;                // sketch bits held in a slot

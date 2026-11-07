@@ -137,7 +137,6 @@ int start(unsigned long long heapgroesse, unsigned long long pufferbytes,
   dat_anlegen();   // the file is empty: no page has data
   V.letzte = ~(unsigned long long)0;   // empty
   V.letzter = 0;
-  memset(V.puffer, 0, (size_t)pufferbytes);      // populate
 
   // 5) mirror check: the same physical frame under two addresses.  Without
   //    it objects at the wrap would span silently wrong.  VOLATILE is
@@ -199,7 +198,6 @@ static int dyn_setze(unsigned long long N_neu) {
   if (!sm) { msg_note(26); return -7; }
   V.schmutz = sm;
   memset(V.schmutz, 0, (size_t)N_neu);
-  memset(b, 0, (size_t)neu_bytes);     // populate up front, as at setup
   V.puffer = b; V.rahmen = N_neu; V.maske = N_neu - 1;
   zonen_rechne();              // the pool is empty; sets the reciprocals too
   V.letzte = ~(unsigned long long)0; V.letzter = 0;
@@ -469,7 +467,7 @@ static inline unsigned long long slot_von(unsigned long long page_index) {
 }
 
 static unsigned long long zonen_textrahmen(unsigned long long N) {
-  return (N / 16) / 16384 * 16384;
+  return (N / 16) / 1024 * 1024;
 }
 // Barrett for the text area, checked for every text page like rez_setze().
 static void t_setze(unsigned long long S) {

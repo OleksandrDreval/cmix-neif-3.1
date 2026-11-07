@@ -147,24 +147,24 @@ struct BinEncoder {
       shift_low();
     }
   }
-  void encode_bit(uint16_t* prob, int bit) {
+  void encode_bit(uint16_t* prob, int bit, int sh = 5) {
     uint32_t p = *prob;
     uint32_t bound = (range >> 11) * p;
     if (!bit) {
       range = bound;
-      *prob = uint16_t(p + ((2048 - p) >> 5));
+      *prob = uint16_t(p + ((2048 - p) >> sh));
     } else {
       low += bound;
       range -= bound;
-      *prob = uint16_t(p - (p >> 5));
+      *prob = uint16_t(p - (p >> sh));
     }
     norm();
   }
-  void encode_tree(uint16_t* probs, int nbits, uint32_t sym) {
+  void encode_tree(uint16_t* probs, int nbits, uint32_t sym, int s0 = 5, int s1 = 5) {
     uint32_t node = 1;
     for (int k = nbits - 1; k >= 0; k--) {
       int bit = (sym >> k) & 1;
-      encode_bit(&probs[node], bit);
+      encode_bit(&probs[node], bit, node < 4 ? s0 : s1);
       node = (node << 1) | bit;
     }
   }
@@ -273,6 +273,7 @@ struct ValModels {
   Models m{true};
   CountNode sign_int4w;
   std::vector<uint8_t> last_zrow;
+  std::string last_int4_cn, last_bf16_cn, last_f32_cn;
   ValModels() {
     m.cplane.resize(2 * 256);
     m.cint4w.resize(12 * 8);
@@ -287,7 +288,7 @@ struct ValModels {
 };
 
 void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
-                   const std::string& cn) {
+                   const std::string& cn, uint8_t npkey = 0) {
   Models& m = vm.m;
   switch (enc) {
     case ENC_INT4W:
@@ -298,7 +299,22 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
       if (enc == ENC_INT4W) vm.last_zrow.assign(R, 0);
       else vm.last_zrow.clear();
       auto& cw = vm.cint4w_cn[cn];
-      if (cw.empty()) cw.resize(12 * 8);
+      if (cw.empty()) {
+        cw.resize(12 * 8);
+        for (size_t u = 0; u < 12 * 8; u++) {
+          if ((u & 7) == 4) cw[u] = {24, 1};
+          else if ((u & 7) == 5) cw[u] = {4, 1};
+        }
+        if (!vm.last_int4_cn.empty()) {
+          auto& prev = vm.cint4w_cn[vm.last_int4_cn];
+          for (size_t u = 1; u < 12 * 8; u++) {
+            uint16_t g0 = prev[u].n0 >> 3, g1 = prev[u].n1 >> 3;
+            if ((u & 7) == 4 && g0 < 24) g0 = 24;
+            cw[u] = {uint16_t(g0 ? g0 : 1), uint16_t(g1 ? g1 : 1)};
+          }
+        }
+      }
+      if (enc == ENC_INT4W) vm.last_int4_cn = cn;
       std::vector<uint64_t> cs(C, 0);
       uint64_t n = 0, T = 0, N = 0;
       int prev = 0;
@@ -332,7 +348,7 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
             uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
             if (M < 1) M = 1;
             uint64_t rr = (rs * 65536 + 16 * M) / (k + 16);
-            uint64_t cc = (cs[k] * 65536 + 16 * M) / (n + 16);
+            uint64_t cc = (cs[k] * 65536 + 40 * M) / (n + 40);
             uint64_t b = (2 * rr * cc) / (M * 65536);
             if (b > 11) b = 11;
             E.encode_ctree(&cw[b * 8], 3, uint32_t(a), CNT_LIMIT_INT4W);
@@ -367,9 +383,25 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
       CountNode* bhi = nullptr;
       if (!f32) {
         auto& t = vm.bf16c[cn];
-        if (t.empty()) t.assign(257 * 256, 1024);
+        if (t.empty()) {
+          t.assign(257 * 256, 1024);
+          if (!vm.last_bf16_cn.empty()) {
+            auto& pt = vm.bf16c[vm.last_bf16_cn];
+            for (size_t u = 0; u < 257 * 256; u++) t[u] = uint16_t((pt[u] + 1024) >> 1);
+          }
+        }
         auto& th = vm.bf16c_hi[cn];
-        if (th.empty()) th.resize(256);
+        if (th.empty()) {
+          th.resize(256);
+          if (!vm.last_bf16_cn.empty()) {
+            auto& pth = vm.bf16c_hi[vm.last_bf16_cn];
+            for (size_t u = 0; u < 256; u++) {
+              uint16_t g0 = pth[u].n0 >> 4, g1 = pth[u].n1 >> 4;
+              th[u] = {uint16_t(g0 ? g0 : 1), uint16_t(g1 ? g1 : 1)};
+            }
+          }
+        }
+        vm.last_bf16_cn = cn;
         s = &t;
         bhi = th.data();
       }
@@ -378,12 +410,23 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
       CountNode* hc = nullptr;
       if (enc == ENC_F32HC) {
         auto& c = vm.f32hc[cn];
-        if (c.empty()) c.resize(5 * 256);
+        if (c.empty()) {
+          c.resize(5 * 256);
+          if (!vm.last_f32_cn.empty()) {
+            auto& pc = vm.f32hc[vm.last_f32_cn];
+            for (size_t u = 0; u < 5 * 256; u++) {
+              uint16_t g0 = pc[u].n0 >> 4, g1 = pc[u].n1 >> 4;
+              c[u] = {uint16_t(g0 ? g0 : 1), uint16_t(g1 ? g1 : 1)};
+            }
+          }
+        }
+        vm.last_f32_cn = cn;
         hc = c.data();
       }
-      const size_t cols = e.cols();
+      const size_t rows = e.rows(), cols = e.cols();
       for (size_t i = 0, j = 0; i < e.numel(); i++) {
         if (!f32 && i < vm.last_zrow.size() && vm.last_zrow[i]) continue;
+        if (f32 && !npkey && rows == vm.last_zrow.size() && vm.last_zrow[i / cols]) continue;
         uint32_t v;
         if (f32) {
           uint32_t u;
@@ -404,13 +447,11 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
           E.encode_tree(s->data(), 8, hi);
           if (++j == cols) j = 0;
         }
-        E.encode_tree(&(*s)[256 + hi * 256], 8, v & 0xFF);
+        E.encode_tree(&(*s)[256 + hi * 256], 8, v & 0xFF, f32 ? (hi ? 5 : 2) : 4, f32 ? (hi ? 8 : 2) : 5);
       }
-      vm.last_zrow.clear();
       break;
     }
     case ENC_BF16: {
-      vm.last_zrow.clear();
       for (size_t i = 0; i < e.numel(); i++) {
         uint16_t u;
         std::memcpy(&u, &e.data[2 * i], 2);
@@ -421,7 +462,6 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
       break;
     }
     case ENC_PLANE4: {
-      vm.last_zrow.clear();
       for (size_t i = 0; i < e.data.size(); i++) {
         if ((i & 3) < 2) E.encode_ctree(&m.cplane[(i & 3) * 256], 8, e.data[i], CNT_LIMIT_PLANE01);
         else E.encode_tree(&m.plane[(i & 3) * 256], 8, e.data[i]);
@@ -430,10 +470,8 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
     }
     case ENC_ROPE_SIN:
     case ENC_ROPE_COS:
-      vm.last_zrow.clear();
       break;  // recomputed by the reader
     case ENC_RAW:
-      vm.last_zrow.clear();
       for (uint8_t b : e.data) E.encode_tree(m.raw.data(), 8, b);
       break;
     default:
@@ -853,7 +891,7 @@ std::vector<uint8_t> encode_np(std::vector<Ent> es, int ver, bool k, const std::
     BinEncoder scratch;
     for (int i : ia) {
       std::string cn = HB.code(scratch, es[i], uint8_t(enc[i] | keyflag[i]));
-      encode_values(scratch, VB, es[i], enc[i], cn);
+      encode_values(scratch, VB, es[i], enc[i], cn, keyflag[i]);
     }
     Models& m = VB.m;
     std::fill(m.cint4.begin(), m.cint4.end(), CountNode());
@@ -864,6 +902,9 @@ std::vector<uint8_t> encode_np(std::vector<Ent> es, int ver, bool k, const std::
     VB.sign_int4w = CountNode();
     VB.last_zrow.clear();
     VB.cint4w_cn.clear();
+    VB.last_int4_cn.clear();
+    VB.last_bf16_cn.clear();
+    VB.last_f32_cn.clear();
     for (int c = 0; c < 3; c++) m.qa0[c] = m.qa1[c] = CountNode();
     VB.bf16c.clear();
     VB.bf16c_hi.clear();
@@ -915,7 +956,7 @@ std::vector<uint8_t> encode_np(std::vector<Ent> es, int ver, bool k, const std::
   ValModels VA;
   for (int i : ia) {
     std::string cn = H.code(EA, es[i], uint8_t(enc[i] | keyflag[i]));
-    encode_values(EA, VA, es[i], enc[i], cn);
+    encode_values(EA, VA, es[i], enc[i], cn, keyflag[i]);
   }
   std::vector<uint8_t> A = EA.finish();
   if (A[0] != 0) die("stream A does not start with the zero cache byte");

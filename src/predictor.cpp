@@ -59,6 +59,10 @@ void Predictor::FreeFxcmMemory() {
 
 void Predictor::FreeFxcmRest() {
   fxcm_model_.FreeRest();
+  using namespace semantic_cache;
+  constexpr size_t kSemTotal = (size_t)kN * kKB + (size_t)kN +
+      ((size_t)kL << kB) * kM * sizeof(Slot) + (size_t)kN * 4 + (size_t)kHist;
+  if (sem_.key) { munmap(sem_.key, kSemTotal); sem_.key = nullptr; }
 }
 
 unsigned long long Predictor::GetNumModels() {
@@ -801,42 +805,28 @@ static inline void SemUtStep(double* w, double* g2, const double* f, int n, doub
 // gets the zero page on its first read and stays in 4-KiB pages after the
 // first write; the periodic MADV_COLLAPSE of the allocation registry
 // (huge_pages.h) turns its densely resident blocks into huge pages.
-static void* SemTable(size_t bytes, bool reg) {
-  const size_t kHuge = (size_t)2 << 20;
-  const size_t len = (bytes + 2 * kHuge - 1) & ~(kHuge - 1);
-  void* p = mmap(nullptr, len, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (p == MAP_FAILED) return nullptr;
-  uintptr_t a = ((uintptr_t)p + kHuge - 1) & ~(uintptr_t)(kHuge - 1);
-  madvise((void*)a, len - (a - (uintptr_t)p), MADV_HUGEPAGE);
-  if (reg) PAGE_REGISTRY_ADD((void*)a, bytes);
-  return (void*)a;
-}
-
 __attribute__((noinline)) COLD_SIZE_ATTR void Predictor::SemInit() {
   using namespace semantic_cache;
   semantic_cache::State& s = sem_;
-  s.key = (uint8_t*)SemTable((size_t)kN * kKB, false);
-  s.val = (uint8_t*)SemTable((size_t)kN, false);
-  s.slot = (Slot*)SemTable(((size_t)kL << kB) * kM * sizeof(Slot), true);
-  s.epos = (uint32_t*)SemTable((size_t)kN * 4, false);
-  s.hist = (uint8_t*)SemTable((size_t)kHist, false);
-  if (!s.key || !s.val || !s.slot || !s.epos || !s.hist) {
+  constexpr size_t n0 = (size_t)kN * kKB;
+  constexpr size_t n1 = (size_t)kN;
+  constexpr size_t n2 = ((size_t)kL << kB) * kM * sizeof(Slot);
+  constexpr size_t n3 = (size_t)kN * 4;
+  constexpr size_t n4 = (size_t)kHist;
+  constexpr size_t kSemTotal = n0 + n1 + n2 + n3 + n4;
+  uint8_t* p = (uint8_t*)mmap(nullptr, kSemTotal, PROT_READ | PROT_WRITE,
+                              MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+  if (p == MAP_FAILED) {
     msg_note(553);
     exit(1);
   }
-  // Resident now, at the first stream byte, behind room made in the PPMd
-  // pool.  Lookups and entries start at the text; the bucket table is read
-  // before it is written, and on a kernel that answers a write to the huge
-  // zero page with a huge page its first few hundred entries made all 960 MiB
-  // resident within 100 ms, after the pool had grown.  All of
-  // it is resident at the end anyway.  Zero-filled, so no value changes.
-  {
-    const size_t n[5] = {(size_t)kN * kKB, (size_t)kN, ((size_t)kL << kB) * kM * sizeof(Slot),
-                         (size_t)kN * 4, (size_t)kHist};
-    unsigned long long sum = 0;
-    for (int i = 0; i < 5; ++i) sum += n[i];
-    (void)ppmd_page::raum(sum);
-  }
+  PAGE_REGISTRY_ADD(p, kSemTotal);
+  ppmd_page::raum(kSemTotal);
+  s.key  = p;
+  s.val  = p + n0;
+  s.slot = (Slot*)(p + n0 + n1);
+  s.epos = (uint32_t*)(p + n0 + n1 + n2);
+  s.hist = p + n0 + n1 + n2 + n3;
   // one generator, in this order: projection, table hyperplanes, sketch hyperplanes
   uint64_t r = 0x5EC0CAC4E2ULL;
   for (int a = 0; a < kD; ++a)

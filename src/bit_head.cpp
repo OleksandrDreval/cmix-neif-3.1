@@ -112,17 +112,28 @@ inline __m256 Tanh8(__m256 x) {
 }
 
 // Deterministic dense dot product with a fixed-order horizontal reduction.
-inline float DotPadded(const float* w, const float* x, int n_padded) {
-  __m256 acc = _mm256_setzero_ps();
-  for (int j = 0; j < n_padded; j += 8) {
-    acc = _mm256_fmadd_ps(_mm256_loadu_ps(w + j), _mm256_loadu_ps(x + j), acc);
-  }
+inline float Hsum8(__m256 acc) {
   __m128 lo = _mm256_castps256_ps128(acc);
   __m128 hi = _mm256_extractf128_ps(acc, 1);
   __m128 s = _mm_add_ps(lo, hi);
   s = _mm_add_ps(s, _mm_movehl_ps(s, s));
   s = _mm_add_ss(s, _mm_shuffle_ps(s, s, 1));
   return _mm_cvtss_f32(s);
+}
+inline float DotPadded(const float* w, const float* x, int n_padded) {
+  __m256 acc = _mm256_setzero_ps();
+  for (int j = 0; j < n_padded; j += 8) {
+    acc = _mm256_fmadd_ps(_mm256_loadu_ps(w + j), _mm256_loadu_ps(x + j), acc);
+  }
+  return Hsum8(acc);
+}
+inline float Dot32Preloaded(const float* w, __m256 x0, __m256 x1, __m256 x2, __m256 x3) {
+  __m256 acc = _mm256_setzero_ps();
+  acc = _mm256_fmadd_ps(_mm256_loadu_ps(w + 0), x0, acc);
+  acc = _mm256_fmadd_ps(_mm256_loadu_ps(w + 8), x1, acc);
+  acc = _mm256_fmadd_ps(_mm256_loadu_ps(w + 16), x2, acc);
+  acc = _mm256_fmadd_ps(_mm256_loadu_ps(w + 24), x3, acc);
+  return Hsum8(acc);
 }
 
 inline void AxpyNoFma(float* __restrict acc, const float* __restrict v,
@@ -551,7 +562,7 @@ void Head::Build() {
     const float sc = 1.0f / std::sqrt((float)aux_n_hid);
     for (int r = 0; r < nhid; ++r) {
       for (int cc = 0; cc < aux_n_hid; ++cc) {
-        hidP[r * aux_n_hid + cc] = (prng.Uniform(1.0f) >= 0.0f) ? sc : -sc;
+        hidP[cc * nhid + r] = (prng.Uniform(1.0f) >= 0.0f) ? sc : -sc;
       }
     }
   }
@@ -628,7 +639,7 @@ COLD_SIZE_ATTR __attribute__((noinline)) void Head::LoadBlob() {
       std::uint32_t u = 0;
       if (live) {
         const unsigned s = e[kBlobN];
-        u = (std::uint32_t)(s & 0x80) << 24 | (std::uint32_t)e[0] << 23 | (std::uint32_t)(s & 0x7f) << 16;
+        u = (std::uint32_t)(s & 0x08) << 28 | (std::uint32_t)e[0] << 23 | (std::uint32_t)(s & 0x07) << 20;
         ++e;
       }
       __builtin_memcpy(p, &u, sizeof(u));
@@ -660,8 +671,17 @@ void Head::Forward() {
     _mm256_storeu_ps(a + r, _mm256_mul_ps(zv, s));
   }
   const float* const hp = frozen ? h : hprev;
+  const __m256 a0 = _mm256_loadu_ps(a + 0);
+  const __m256 a1 = _mm256_loadu_ps(a + 8);
+  const __m256 a2 = _mm256_loadu_ps(a + 16);
+  const __m256 a3 = _mm256_loadu_ps(a + 24);
+  const __m256 hp0 = _mm256_loadu_ps(hp + 0);
+  const __m256 hp1 = _mm256_loadu_ps(hp + 8);
+  const __m256 hp2 = _mm256_loadu_ps(hp + 16);
+  const __m256 hp3 = _mm256_loadu_ps(hp + 24);
   for (int k = 0; k < 4 * C; ++k) {
-    pre[k] = DotPadded(wih + k * C, a, C) + DotPadded(whh + k * C, hp, C) +
+    pre[k] = Dot32Preloaded(wih + k * C, a0, a1, a2, a3) +
+             Dot32Preloaded(whh + k * C, hp0, hp1, hp2, hp3) +
              bg[k];
   }
   const float* const cp = frozen ? c : cprev;
@@ -1047,13 +1067,22 @@ unsigned int Adjust(unsigned int base_p, const float* stage1, int n_stage1,
       const unsigned long long b = s.i >> 3;
       if (b != s.hid_byte) {
         s.hid_byte = b;
-        const int n8 = s.aux_n_hid & ~7;
-        for (int r = 0; r < Head::nhid; ++r) {
-          const float* pr = s.hidP + (size_t)r * s.aux_n_hid;
-          float acc = n8 ? DotPadded(pr, s.aux_hid, n8) : 0.0f;
-          for (int cc = n8; cc < s.aux_n_hid; ++cc) acc += pr[cc] * s.aux_hid[cc];
-          s.hidC[r] = acc;
+        __m256 acc0 = _mm256_setzero_ps();
+        __m256 acc1 = _mm256_setzero_ps();
+        __m256 acc2 = _mm256_setzero_ps();
+        __m256 acc3 = _mm256_setzero_ps();
+        for (int cc = 0; cc < s.aux_n_hid; ++cc) {
+          const float* pr = s.hidP + (size_t)cc * Head::nhid;
+          const __m256 vh = _mm256_set1_ps(s.aux_hid[cc]);
+          acc0 = _mm256_add_ps(acc0, _mm256_mul_ps(_mm256_loadu_ps(pr + 0), vh));
+          acc1 = _mm256_add_ps(acc1, _mm256_mul_ps(_mm256_loadu_ps(pr + 8), vh));
+          acc2 = _mm256_add_ps(acc2, _mm256_mul_ps(_mm256_loadu_ps(pr + 16), vh));
+          acc3 = _mm256_add_ps(acc3, _mm256_mul_ps(_mm256_loadu_ps(pr + 24), vh));
         }
+        _mm256_storeu_ps(s.hidC + 0, acc0);
+        _mm256_storeu_ps(s.hidC + 8, acc1);
+        _mm256_storeu_ps(s.hidC + 16, acc2);
+        _mm256_storeu_ps(s.hidC + 24, acc3);
       }
       for (int r = 0; r < Head::nhid; ++r) x[Head::kHid + r] = s.hidC[r];
     } else {

@@ -77,8 +77,8 @@ prof_gen: CPPFLAGS_PART-THAT-IS-COLD        += -fprofile-generate=$(ROOT_DIR)/pg
 prof_gen: LFLAGS                            += -fprofile-generate=$(ROOT_DIR)/pgo_data
 prof_gen: clean cmix
 
-prof_use: CPPFLAGS_PART-THAT-CAN-BE-SLOW    += -fprofile-use=$(ROOT_DIR)/pgo_data
-prof_use: CPPFLAGS_PART-THAT-SHOULD-BE-FAST += -fprofile-use=$(ROOT_DIR)/pgo_data -flto
+prof_use: CPPFLAGS_PART-THAT-CAN-BE-SLOW    += -fprofile-use=$(ROOT_DIR)/pgo_data -Wno-backend-plugin
+prof_use: CPPFLAGS_PART-THAT-SHOULD-BE-FAST += -fprofile-use=$(ROOT_DIR)/pgo_data -Wno-backend-plugin -flto
 # The -Oz group (runner.cpp with the pre- and
 # post-transforms, reorder, dict_derive) is built WITHOUT the profile: it
 # only made this once-per-run code bigger (-7.754 B in S, archive
@@ -177,8 +177,8 @@ all: cmix
 # and the article order).  It is never shipped and never packed; with
 # AUX_BUILD=1 the transformer head does not run, so the blocks are written the
 # same way they are later read.
-cmix_aux: CPPFLAGS_PART-THAT-CAN-BE-SLOW    += -fprofile-use=$(ROOT_DIR)/pgo_data -DAUX_BUILD=1
-cmix_aux: CPPFLAGS_PART-THAT-SHOULD-BE-FAST += -fprofile-use=$(ROOT_DIR)/pgo_data -flto -DAUX_BUILD=1
+cmix_aux: CPPFLAGS_PART-THAT-CAN-BE-SLOW    += -fprofile-use=$(ROOT_DIR)/pgo_data -Wno-backend-plugin -DAUX_BUILD=1
+cmix_aux: CPPFLAGS_PART-THAT-SHOULD-BE-FAST += -fprofile-use=$(ROOT_DIR)/pgo_data -Wno-backend-plugin -flto -DAUX_BUILD=1
 cmix_aux: CPPFLAGS_PART-THAT-IS-COLD        += -DAUX_BUILD=1
 cmix_aux: LFLAGS                            += -fprofile-use=$(ROOT_DIR)/pgo_data -flto
 cmix_aux: clean cmix

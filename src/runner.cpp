@@ -826,6 +826,8 @@ bool RunCompression(bool enable_preprocess, const std::string& input_path,
   console_progress::PhaseEnd();   // "pretraining ..." ends here
   Compress(temp_bytes, temp_in, data_out, output_bytes, &p);
   if (!MetablockInert()) dict_article::Pruefen();
+  p.FreeFxcmMemory();
+  p.FreeFxcmRest();
   fclose(temp_in);
   fclose(data_out);
   remove(temp_path.c_str());

@@ -359,17 +359,17 @@ struct BinDecoder {
     for (int i = 0; i < 4; i++) code = (code << 8) | byte();
   }
   uint8_t byte() { return p < end ? *p++ : 0; }
-  int decode_bit(uint16_t* prob) {
+  int decode_bit(uint16_t* prob, int sh = 5) {
     uint32_t bound = (range >> 11) * *prob;
     int bit;
     if (code < bound) {
       range = bound;
-      *prob = uint16_t(*prob + ((2048 - *prob) >> 5));
+      *prob = uint16_t(*prob + ((2048 - *prob) >> sh));
       bit = 0;
     } else {
       code -= bound;
       range -= bound;
-      *prob = uint16_t(*prob - (*prob >> 5));
+      *prob = uint16_t(*prob - (*prob >> sh));
       bit = 1;
     }
     while (range < (1u << 24)) {
@@ -379,9 +379,10 @@ struct BinDecoder {
     return bit;
   }
   // probs: (1 << nbits) entries, indices 1.. used
-  uint32_t decode_tree(uint16_t* probs, int nbits) {
+  uint32_t decode_tree(uint16_t* probs, int nbits, int s0 = 5, int s1 = 5) {
     uint32_t node = 1;
-    for (int k = 0; k < nbits; k++) node = (node << 1) | decode_bit(&probs[node]);
+    for (int k = 0; k < nbits; k++)
+      node = (node << 1) | decode_bit(&probs[node], node < 4 ? s0 : s1);
     return node - (1u << nbits);
   }
 
@@ -428,6 +429,16 @@ void Frisch16(uint16_t* p, size_t n) {
 void FrischCN(CountNode* p, size_t n) {
   for (size_t i = 0; i < n; i++) p[i] = CountNode();
 }
+void FrischInt4(CountNode* p) {
+  for (size_t i = 0; i < size_t(kNamenN) * 12 * 8; i++)
+    p[i] = CountNode{uint16_t((i & 7) == 4 ? 24 : ((i & 7) == 5 ? 4 : 1)), 1};
+}
+void CopyWarmCN(CountNode* dst, const CountNode* src, size_t n, int sh) {
+  for (size_t u = 0; u < n; u++) {
+    uint16_t g0 = src[u].n0 >> sh, g1 = src[u].n1 >> sh;
+    dst[u] = CountNode{uint16_t(g0 ? g0 : 1), uint16_t(g1 ? g1 : 1)};
+  }
+}
 
 // the models of load_v2 that this container reaches
 struct ModelleId {
@@ -446,21 +457,26 @@ struct ModelleId {
   CountNode* f32hc[kNamenN];    // ENC_F32HC hi trees per canonical name, on first use
   uint8_t* last_zrow;           // zero-row mask of immediately preceding ENC_INT4W tensor
   size_t last_zrow_n;
+  int last_int4_ci, last_bf16_ci, last_f32_ci;
 };
 
 // format NP, end of stream A (np_fresh_values of load_v2): the int4 trees,
 // the zero-row flag, the per-name trees of the row scales and, for NP2, the
 // f32 trees start fresh
 __attribute__((noinline, cold)) void NpFrisch(ModelleId* m) {
-  FrischCN(m->cint4w, kNamenN * 12 * 8);
+  FrischInt4(m->cint4w);
   m->zrow = CountNode();
   m->sign_int4w = CountNode();
   m->last_zrow_n = 0;
+  m->last_int4_ci = m->last_bf16_ci = m->last_f32_ci = -1;
   Frisch16(m->f32hl, 257 * 256);
   for (int c = 0; c < kNamenN; c++) {
-    if (m->bf16c[c]) Frisch16(m->bf16c[c], 257 * 256);
-    if (m->bf16c_hi[c]) FrischCN(m->bf16c_hi[c], 256);
-    if (m->f32hc[c]) FrischCN(m->f32hc[c], 5 * 256);
+    std::free(m->bf16c[c]);
+    m->bf16c[c] = nullptr;
+    std::free(m->bf16c_hi[c]);
+    m->bf16c_hi[c] = nullptr;
+    std::free(m->f32hc[c]);
+    m->f32hc[c] = nullptr;
   }
 }
 
@@ -496,12 +512,13 @@ WeightsFile LoadId(Reader& r, const char* path) {
   uint8_t* bufB = nullptr;   // stream B with its carried head
   ModelleId* m = static_cast<ModelleId*>(std::calloc(1, sizeof(ModelleId)));
   m->zrow = m->tname = m->tblock = m->tmeta = m->sign_int4w = CountNode();
+  m->last_int4_ci = m->last_bf16_ci = m->last_f32_ci = -1;
   FrischCN(m->cmeta, 256 * 256);
   FrischCN(m->cplane, 2 * 256);
   Frisch16(m->plane, 4 * 256);
   Frisch16(m->bf16_hi, 256);
   Frisch16(m->bf16_lo, 256 * 256);
-  FrischCN(m->cint4w, kNamenN * 12 * 8);
+  FrischInt4(m->cint4w);
   Frisch16(m->f32hl, 257 * 256);
 
   auto get_meta = [&]() -> uint8_t {
@@ -633,6 +650,16 @@ WeightsFile LoadId(Reader& r, const char* path) {
         std::free(m->last_zrow);
         m->last_zrow = static_cast<uint8_t*>(std::calloc(rows ? rows : 1, 1));
         m->last_zrow_n = rows;
+        CountNode* cw = &m->cint4w[ci * 96];
+        if (cw[0].n0) {
+          cw[0].n0 = 0;
+          if (m->last_int4_ci >= 0) {
+            CopyWarmCN(cw + 1, &m->cint4w[m->last_int4_ci * 96 + 1], 95, 3);
+            for (size_t u = 4; u < 96; u += 8)
+              if (cw[u].n0 < 24) cw[u].n0 = 24;
+          }
+        }
+        m->last_int4_ci = int(ci);
         int8_t* out = reinterpret_cast<int8_t*>(t.data);
         uint64_t* cs = static_cast<uint64_t*>(std::calloc(cols, sizeof(uint64_t)));
         uint64_t n = 0, T = 0, N = 0;
@@ -647,10 +674,10 @@ WeightsFile LoadId(Reader& r, const char* path) {
             uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
             if (M < 1) M = 1;
             uint64_t rr = (rs * 65536 + 16 * M) / (k + 16);
-            uint64_t cc = (cs[k] * 65536 + 16 * M) / (n + 16);
+            uint64_t cc = (cs[k] * 65536 + 40 * M) / (n + 40);
             uint64_t b = (2 * rr * cc) / (M * 65536);
             if (b > 11) b = 11;
-            uint32_t mag = dec.decode_ctree(&m->cint4w[(ci * 12 + b) * 8], 3, CNT_LIMIT_INT4W);
+            uint32_t mag = dec.decode_ctree(&cw[b * 8], 3, CNT_LIMIT_INT4W);
             int v = int(mag);
             if (mag && dec.decode_cbit(&m->sign_int4w, CNT_LIMIT_SIGN)) v = -v;
             row[k] = int8_t(v);
@@ -666,10 +693,6 @@ WeightsFile LoadId(Reader& r, const char* path) {
       }
       case ENC_BF16C:
       case ENC_F32HC: {
-        // ENC_BF16C: hi byte through counting tree per canonical name, lo byte
-        // through shift-5 trees per canonical name; zero-row scales skipped.
-        // ENC_F32HC: hi byte through counting trees per canonical name and
-        // column (columns from 4 on share one tree), lo byte through f32hl.
         const bool f32 = encoding == ENC_F32HC;
         uint16_t* s = m->f32hl;
         CountNode* hc = nullptr;
@@ -677,25 +700,39 @@ WeightsFile LoadId(Reader& r, const char* path) {
           CountNode*& c = m->f32hc[ci];
           if (!c) {
             c = static_cast<CountNode*>(std::malloc(5 * 256 * sizeof(CountNode)));
-            FrischCN(c, 5 * 256);
+            if (m->last_f32_ci >= 0)
+              CopyWarmCN(c, m->f32hc[m->last_f32_ci], 5 * 256, 4);
+            else
+              FrischCN(c, 5 * 256);
           }
+          m->last_f32_ci = int(ci);
           hc = c;
         } else {
           uint16_t*& b = m->bf16c[ci];
           if (!b) {
             b = static_cast<uint16_t*>(std::malloc(257 * 256 * sizeof(uint16_t)));
-            Frisch16(b, 257 * 256);
+            if (m->last_bf16_ci >= 0) {
+              const uint16_t* pb = m->bf16c[m->last_bf16_ci];
+              for (size_t u = 0; u < 257 * 256; u++) b[u] = uint16_t((pb[u] + 1024) >> 1);
+            } else {
+              Frisch16(b, 257 * 256);
+            }
           }
           CountNode*& ch = m->bf16c_hi[ci];
           if (!ch) {
             ch = static_cast<CountNode*>(std::malloc(256 * sizeof(CountNode)));
-            FrischCN(ch, 256);
+            if (m->last_bf16_ci >= 0)
+              CopyWarmCN(ch, m->bf16c_hi[m->last_bf16_ci], 256, 4);
+            else
+              FrischCN(ch, 256);
           }
+          m->last_bf16_ci = int(ci);
           s = b;
           hc = ch;
         }
         for (size_t k = 0, j = 0; k < numel; k++) {
           if (!f32 && k < m->last_zrow_n && m->last_zrow[k]) continue;
+          if (f32 && !npkey && rows == m->last_zrow_n && m->last_zrow[k / cols]) continue;
           uint32_t hi;
           if (f32) {
             hi = dec.decode_ctree(hc + (j < 4 ? j : 4) * 256, 8, CNT_LIMIT_F32HC);
@@ -703,13 +740,14 @@ WeightsFile LoadId(Reader& r, const char* path) {
           } else {
             hi = dec.decode_ctree(hc, 8, CNT_LIMIT_BF16C_HI);
           }
-          uint32_t v = (hi << 8) | dec.decode_tree(&s[256 + hi * 256], 8);
+          uint32_t v = (hi << 8) | dec.decode_tree(&s[256 + hi * 256], 8,
+                                                   f32 ? (hi ? 5 : 2) : 4,
+                                                   f32 ? (hi ? 8 : 2) : 5);
           if (f32)
             reinterpret_cast<uint32_t*>(t.data)[k] = v << 16;
           else
             reinterpret_cast<uint16_t*>(t.data)[k] = uint16_t(v);
         }
-        m->last_zrow_n = 0;
         break;
       }
       case ENC_BF16: {
@@ -719,7 +757,6 @@ WeightsFile LoadId(Reader& r, const char* path) {
           uint32_t lo = dec.decode_tree(&m->bf16_lo[hi * 256], 8);
           out[k] = uint16_t((hi << 8) | lo);
         }
-        m->last_zrow_n = 0;
         break;
       }
       case ENC_PLANE4: {
@@ -727,7 +764,6 @@ WeightsFile LoadId(Reader& r, const char* path) {
           t.data[k] = uint8_t((k & 3) < 2
                                   ? dec.decode_ctree(&m->cplane[(k & 3) * 256], 8, CNT_LIMIT_PLANE01)
                                   : dec.decode_tree(&m->plane[(k & 3) * 256], 8));
-        m->last_zrow_n = 0;
         break;
       }
       case ENC_ROPE_SIN:
@@ -738,7 +774,6 @@ WeightsFile LoadId(Reader& r, const char* path) {
         for (size_t pos = 0; pos < t.shape[0]; pos++)
           for (size_t col = 0; col < t.shape[1]; col++)
             out[pos * t.shape[1] + col] = sincosf_cuda(float(pos) * invf[col], cos_bias);
-        m->last_zrow_n = 0;
         break;
       }
       default:
@@ -782,7 +817,7 @@ WeightsFile WeightsFile::load_compressed(const char* path) {
   // reader decodes (it was a second read of the file in the engine)
   unsigned long long h = 14695981039346656037ULL;
   for (size_t i = 0; i < n; i++) h = (h ^ buf[i]) * 1099511628211ULL;
-  if (h != 0x7b5d6d235c69c947ULL)
+  if (h != 0xc3aea41222169537ULL)
     msg_stop(207)
 ;
   Reader r{buf + 8, n - 8, path};   // behind the magic (fixed by the fingerprint)

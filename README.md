@@ -7,7 +7,7 @@
 * Fork base: `cmix-lex`
 * Previous versions: `cmix-neif-2.0` (Marcus Wölk, 30 October 2026) and `cmix-neif-1.0` (Marcus Wölk, 5 October 2026, <https://github.com/marwoelk/cmix-neif-1.0>)
 
-`cmix-neif-3.1` preserves the complete compression pipeline of `cmix-neif-2.0` while applying five targeted improvements by **Oleksandr Dreval** (documented in `CHANGES.md`, `en-optimization_report.md`, and `uk-optimization_report.md`): (1) fixing the self-extracting stub warm-up copy order for user-space syscall interception (`systrap`) and parallelizing packer verification, (2) lossless Sign-Magnitude / per-tensor context re-encoding of the `.c5` transformer weight container (`3,744,629 B` -> `3,738,126 B`, `-13,006 B` in `S`), (3) slot-1 3-bit mantissa rounding and frozen AVX2 fast-path in `BITLSTM` (`-3,134 B` in `S`), (4) ~2.86x peak RAM reduction (`9.77 GiB` -> `~3.34 GiB`) across the `PPMd` page pool and `SEMCACHE` plus 4-way AVX2 unrolling in `SemDotPm1`, and (5) compiler warning cleanups. Sections 3 and 4 below retain the upstream `cmix-neif-2.0` architectural documentation and measurements against `cmix-neif-1.0`.
+`cmix-neif-3.1` preserves the complete compression pipeline of `cmix-neif-2.0` while applying two iterations of surgical, zero-retraining optimizations by **Oleksandr Dreval** (documented in `CHANGES.md`, `en-optimization_report_it_1.md`, `en-optimization_report_it_2.md`, `uk-optimization_report_it_1.md`, and `uk-optimization_report_it_2.md`): (1) fixing the self-extracting stub warm-up copy order for user-space syscall interception (`systrap`), re-tuning stage-1 bootstrap CM weights, and serializing packer verification directly on the shipped binaries (`9.12 GiB` -> `1.51 GiB` peak packer RSS, `158.42 s`), (2) lossless Sign-Magnitude / per-tensor context / QAT-prior / cross-tensor warm-start / two-stage `bf16` / `last_zrow` re-encoding of the `.c5` transformer weight container (`3,744,629 B` -> `3,737,194 B`, `-14,870 B` in `S`), (3) slot-1 3-bit mantissa rounding, `kBlobW` nibble right-shift alignment, and a 100 % IEEE-754 bit-exact frozen AVX2 fast-path (`Dot32Preloaded` + transposed non-FMA `hidP`) in `BITLSTM` (`-2,208 B` total packed binary + `BITLSTM` reduction in `S`), (4) ~2.86x runtime peak RAM reduction (`9.77 GiB` -> `~3.34 GiB`) across the `PPMd` page pool (`zonen_textrahmen` 4 MiB fix, demand-paged `memfd`), single-mapping demand-paged `SEMCACHE` (`MAP_NORESERVE` + `FreeFxcmRest` `munmap` with exact `kNLog = 24, kB = 18` SimHash geometry), and 4 KiB demand-paged `arena` / `HugeBuf` allocators plus 4-way AVX2 unrolling in `SemDotPm1`, and (5) compiler warning and PGO diagnostic cleanups across `src/` and `makefile`. Sections 3 and 4 below retain the upstream `cmix-neif-2.0` architectural documentation and measurements against `cmix-neif-1.0`.
 
 ## The Hutter Prize
 
@@ -46,11 +46,12 @@ memory and using at most 100 GB of temporary disk.
 
 | metric / component | `cmix-neif-2.0` baseline | `cmix-neif-3.1` | delta / effect |
 |---|---:|---:|---:|
-| `.c5` transformer weight container (single / doubled in `S`) | 3,744,629 B / 7,489,258 B | **3,738,126 B** / **7,476,252 B** | **-6,503 B** per copy / **-13,006 B in `S`** (100 % lossless across all 597 tensors) |
-| `BITLSTM` `kBlobW` packed x86-CM size (single / doubled in `S`) | 22,728 B / 45,456 B | **21,161 B** / **42,322 B** | **-1,567 B** per binary / **-3,134 B in `S`** |
-| Peak resident set (RAM) on full `enwik9` | 9.77 GiB (9,770 MiB) | **~3.34 GiB (3,420 MiB)** | **2.86x lower RAM** (-6.35 GiB) |
+| `.c5` transformer weight container (single / doubled in `S`) | 3,744,629 B / 7,489,258 B | **3,737,194 B** / **7,474,388 B** | **-7,435 B** per copy / **-14,870 B in `S`** (100 % lossless across all 597 tensors, FNV-1a-64 `0xc3aea41222169537`) |
+| Packed compressor + decompressor (`cmix_orig + .decomp_bin`) | 395,323 B (211,438 + 183,885) | **393,115 B** (210,331 + 182,784) | **-2,208 B in `S`** (slot-1 3-bit mantissa, `kBlobW` nibble shift, `Dot32Preloaded` `-359 B` `.text`, `boot_models.h`) |
+| Shipped `comp9` / projected `S = comp9 + archive9` | 4,042,564 B / 93,388,956 B | **4,034,022 B** / **93,371,878 B** | **-8,542 B** on `comp9` (`sha256 2fbaa9e0...`) / **-17,078 B in `S`** |
+| Peak resident set (RAM) on full `enwik9` | 9.77 GiB (9,770 MiB) | **~3.34 GiB (3,420 MiB)** | **2.86x lower RAM** (-6.20 GiB) |
+| Packer build peak RSS & verification (`build_packer.sh`) | 9.12 GiB / >300 s (`systrap` trap) | **1.51 GiB (1,543 MiB)** / **158.42 s** | **6.05x lower build RAM**, >1.9x faster, `systrap`-safe |
 | Single-core coding / decoding speed (representative slices) | baseline (1.00x) | **+10.4 % to +10.7 % faster** | 100 % round-trip bit-identical |
-| Packer build & 6 bit-exact cross-checks (`build_packer.sh`) | >300 s / `systrap` trap failure | **143.0 s** (all 6 `bitidentisch`) | **>2.1x faster**, `systrap`-safe |
 
 ### Upstream `cmix-neif-2.0` full `enwik9` reference run (baseline)
 
@@ -59,7 +60,7 @@ memory and using at most 100 GB of temporary disk.
 | `archive9`, self-extracting | 89,346,392 B |
 | `comp9`, the compressor | 4,042,564 B |
 | `comp9.args`, the command-line options of the compression run | 0 B (the compressor is started as `./comp9`, section 1.4) |
-| **S = `comp9` + `archive9` + `comp9.args` (`2.0` baseline)** | **93,388,956 B** *(before `-16,140 B` weight/blob savings in `cmix-neif-3.1`)* |
+| **S = `comp9` + `archive9` + `comp9.args` (`2.0` baseline)** | **93,388,956 B** *(before `-17,078 B` weight/code/packer savings in `cmix-neif-3.1`)* |
 | margin `(L-S)/L` (`2.0` baseline) | 7.01 % against the last awarded record, `fx2-cmix-transformer` (Vladimir Ivanov, submitted 24 July 2026, awarded 30 September 2026, L = 100,424,672 B); 2.63 % against `cmix-neif-1.0` (submitted 5 October 2026, S = 95,914,051 B) and 1.39 % against `cmix-neif-beehive` (Vladimir Malinovskii, submitted 23 October 2026, S = 94,705,591 B as stated in its submission) |
 | wall clock (`2.0` baseline, section 1.2) | compression 49.18 h, decompression 49.3 h |
 | peak resident set | **`~3.34 GiB` in `cmix-neif-3.1`** (reduced from 9.77 GiB compression / 9.75 GiB decompression in `cmix-neif-2.0`) |
@@ -68,11 +69,13 @@ memory and using at most 100 GB of temporary disk.
 | Geekbench 5 single core, `T` | 1,284, limit 70,000/T = 54.52 h for each program (section 1.2) |
 | sha256 `comp9` / `archive9` (`2.0` reference) | 976bf2d309707ab555e0c92720da5508ff0e5e6b846fc7082234262b06767f82 / 88dd7087404122d010261e6855afd88875d34dde1f0539377d3e832fc0f6b3fd |
 
-The transformer weights are a compressed container of 3,738,126 B in `cmix-neif-3.1`
-(re-encoded losslessly from 3,744,629 B in `cmix-neif-2.0`). It is
+The transformer weights are a compressed container of 3,737,194 B in `cmix-neif-3.1`
+(re-encoded losslessly from 3,744,629 B in `cmix-neif-2.0`; sha256
+`5be27b4da650a1442e862646629e8f2b6fb137ceccea468c7f1fb000e5716c92`). It is
 appended to both executables and therefore counts twice in `S`; each program
 writes it out of its own image at start-up. The three weight sets of BITLSTM,
-24,579 weights in bfloat16 (49,158 B, with slot-1 mantissas rounded to 3 bits in
+24,579 weights in bfloat16 (49,158 B, with slot-1 mantissas rounded to 3 bits and
+the second-half sign+mantissa nibble stream right-shifted by 4 bits in
 `cmix-neif-3.1`), are compiled into the program and count twice as well.
 
 ## Overview
@@ -1213,12 +1216,14 @@ and may give a smaller archive.
 ## 7. Files in this package
 
 ```
-README.md                   this file
-AUTHORS                     authors, copyright holders and OSI/FSF GPL-3.0-only notice
-CHANGES.md                  changes in cmix-neif-3.1 (against 2.0) and in 2.0 (against 1.0)
-en-optimization_report.md   analytical & empirical optimization report for cmix-neif-3.1 (English)
-uk-optimization_report.md   analytical & empirical optimization report for cmix-neif-3.1 (Ukrainian)
-ERRORS.md                   the error codes E<n> and their texts
+README.md                       this file
+AUTHORS                         authors, copyright holders and OSI/FSF GPL-3.0-only notice
+CHANGES.md                      changes in cmix-neif-3.1 (against 2.0) and in 2.0 (against 1.0)
+en-optimization_report_it_1.md  Iteration 1 analytical & empirical report for cmix-neif-3.1 (English)
+en-optimization_report_it_2.md  Iteration 2 analytical & empirical report for cmix-neif-3.1 (English)
+uk-optimization_report_it_1.md  Iteration 1 analytical & empirical report for cmix-neif-3.1 (Ukrainian)
+uk-optimization_report_it_2.md  Iteration 2 analytical & empirical report for cmix-neif-3.1 (Ukrainian)
+ERRORS.md                       the error codes E<n> and their texts
 LICENSE                     GNU General Public License, version 3 (SPDX: GPL-3.0-only, OSI-approved)
 NOTICE.md                   provenance and descent notice
 third_party/                license texts of the embedded components
@@ -1317,14 +1322,21 @@ are archived at <https://marwoelk.de/cmix-neif-2.0/>.
 
 `cmix-neif-3.1` (<https://github.com/OleksandrDreval/cmix-neif-3.1>, authored by
 **Oleksandr Dreval**, <https://github.com/OleksandrDreval>) focuses on surgical,
-zero-retraining systems and entropy-coding optimizations on top of
-`cmix-neif-2.0`: making the custom two-stage x86-CM self-extractor compatible
-with user-space syscall interception (`systrap`), losslessly shrinking the `.c5`
-transformer weight container via Sign-Magnitude and per-tensor context coding,
-unifying `BITLSTM` slot-1 mantissa precision and vectorizing its frozen AVX2
-path, and cutting peak RAM usage nearly threefold (`9.77 GiB` -> `~3.34 GiB`).
-Full mathematical proofs and benchmarks are given in `en-optimization_report.md`
-and `uk-optimization_report.md`.
+zero-retraining systems and entropy-coding optimizations across two iterations on
+top of `cmix-neif-2.0`: making the custom two-stage x86-CM self-extractor
+compatible with user-space syscall interception (`systrap`), re-tuning stage-1
+bootstrap CM weights, and cutting packer build peak RAM by `6.05x` (`9.12 GiB` ->
+`1.51 GiB`); losslessly shrinking the `.c5` transformer weight container from
+`3,744,629 B` to `3,737,194 B` (`-14,870 B` in `S`) via Sign-Magnitude coding,
+per-tensor context tables, empirical QAT sparsity priors, cross-tensor warm
+starts, two-stage `bf16` adaptation shifts, and `last_zrow` dead-row skipping;
+unifying `BITLSTM` slot-1 mantissa precision, right-shifting its `kBlobW` nibble
+stream, and vectorizing its frozen AVX2 path at `0 ULP` IEEE-754 bit-exactness;
+and cutting full-run peak RAM nearly threefold (`9.77 GiB` -> `~3.34 GiB`) via
+demand-paged `PPMd`, `SEMCACHE`, and `arena` management. Full mathematical proofs
+and benchmarks are given in `en-optimization_report_it_1.md`,
+`en-optimization_report_it_2.md`, `uk-optimization_report_it_1.md`, and
+`uk-optimization_report_it_2.md`.
 
 ### Upstream `cmix-neif-2.0` note (Marcus Wölk, October 2026)
 
@@ -1375,8 +1387,9 @@ their head. Upstream `cmix-neif-2.0` was prepared from `cmix-neif-1.0`
 (<https://github.com/marwoelk/cmix-neif-1.0>, commit `1c9ea5ed`), and
 `cmix-neif-3.1` (<https://github.com/OleksandrDreval/cmix-neif-3.1>) builds on
 `cmix-neif-2.0`. The modification notices required by GPL-3 section 5a are
-`CHANGES.md`, `AUTHORS`, `en-optimization_report.md`, and
-`uk-optimization_report.md` (together with sections 3 and 4 of this file for
+`CHANGES.md`, `AUTHORS`, `en-optimization_report_it_1.md`,
+`en-optimization_report_it_2.md`, `uk-optimization_report_it_1.md`, and
+`uk-optimization_report_it_2.md` (together with sections 3 and 4 of this file for
 `2.0` against `1.0`). No copyright claim is made over inherited code:
 * **Copyright (C) 2026 Oleksandr Dreval (<https://github.com/OleksandrDreval>)**
   covers the November 2026 `cmix-neif-3.1` modifications and optimization reports;
