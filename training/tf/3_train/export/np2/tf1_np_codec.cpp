@@ -271,7 +271,6 @@ uint8_t pick_encoding(const Ent& e, const std::map<std::string, const Ent*>& see
 // the value models of one stream (NP: stream A and stream B have one each)
 struct ValModels {
   Models m{true};
-  CountNode sign_int4w;
   std::vector<uint8_t> last_zrow;
   std::string last_int4_cn, last_bf16_cn, last_f32_cn;
   ValModels() {
@@ -282,6 +281,7 @@ struct ValModels {
     m.cint4q3.resize(24 * 4);
   }
   std::map<std::string, std::vector<CountNode>> cint4w_cn;  // per canonical name, 12 * 8
+  std::map<std::string, std::vector<CountNode>> sign_int4w_cn;  // per canonical name, 128
   std::map<std::string, std::vector<uint16_t>> bf16c;       // per canonical name
   std::map<std::string, std::vector<CountNode>> bf16c_hi;   // per canonical name, 256 hi nodes
   std::map<std::string, std::vector<CountNode>> f32hc;      // per canonical name, 5 hi trees
@@ -299,8 +299,10 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
       if (enc == ENC_INT4W) vm.last_zrow.assign(R, 0);
       else vm.last_zrow.clear();
       auto& cw = vm.cint4w_cn[cn];
+      auto& sw = vm.sign_int4w_cn[cn];
       if (cw.empty()) {
         cw.resize(12 * 8);
+        sw.resize(128);
         for (size_t u = 0; u < 12 * 8; u++) {
           if ((u & 7) == 4) cw[u] = {24, 1};
           else if ((u & 7) == 5) cw[u] = {4, 1};
@@ -312,10 +314,16 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
             if ((u & 7) == 4 && g0 < 24) g0 = 24;
             cw[u] = {uint16_t(g0 ? g0 : 1), uint16_t(g1 ? g1 : 1)};
           }
+          auto& prev_s = vm.sign_int4w_cn[vm.last_int4_cn];
+          for (size_t u = 0; u < 128; u++) {
+            uint16_t g0 = prev_s[u].n0 >> 4, g1 = prev_s[u].n1 >> 4;
+            sw[u] = {uint16_t(g0 ? g0 : 1), uint16_t(g1 ? g1 : 1)};
+          }
         }
       }
       if (enc == ENC_INT4W) vm.last_int4_cn = cn;
       std::vector<uint64_t> cs(C, 0);
+      std::vector<int> cstate(C, 0);
       uint64_t n = 0, T = 0, N = 0;
       int prev = 0;
       for (size_t r = 0; r < R; r++) {
@@ -341,6 +349,7 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
           prev = alpha;
         }
         uint64_t rs = 0;
+        uint32_t ps = 0;
         for (size_t k = 0; k < C; k++) {
           int v = row[k];
           uint64_t a = uint64_t(v < 0 ? -v : v);
@@ -352,7 +361,14 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
             uint64_t b = (2 * rr * cc) / (M * 65536);
             if (b > 11) b = 11;
             E.encode_ctree(&cw[b * 8], 3, uint32_t(a), CNT_LIMIT_INT4W);
-            if (a) E.encode_cbit(&vm.sign_int4w, v < 0 ? 1 : 0, CNT_LIMIT_SIGN);
+            if (a) {
+              int bit = v < 0 ? 1 : 0;
+              int st = cstate[k];
+              uint32_t ctx = (ps & 3u) | (((uint32_t(a) - 1u) >> 1) << 2) | (uint32_t(st & 3) << 4) | (uint32_t(st < 0) << 6);
+              E.encode_cbit(&sw[ctx], bit, CNT_LIMIT_SIGN);
+              ps = (ps << 1) | uint32_t(bit);
+              cstate[k] = ((st & ~3) + (v << 2)) | (bit + 1);
+            }
           } else {
             uint64_t M = (T * 65536 + 64 * 190054) / (N + 64);
             if (M < 1) M = 1;
@@ -899,7 +915,7 @@ std::vector<uint8_t> encode_np(std::vector<Ent> es, int ver, bool k, const std::
     std::fill(m.cint4q7.begin(), m.cint4q7.end(), CountNode());
     std::fill(m.cint4q3.begin(), m.cint4q3.end(), CountNode());
     m.zrow = CountNode();
-    VB.sign_int4w = CountNode();
+    VB.sign_int4w_cn.clear();
     VB.last_zrow.clear();
     VB.cint4w_cn.clear();
     VB.last_int4_cn.clear();
@@ -919,8 +935,7 @@ std::vector<uint8_t> encode_np(std::vector<Ent> es, int ver, bool k, const std::
     encode_values(EB, VB, es[i], enc[i], cn);
   }
   std::vector<uint8_t> B = EB.finish();
-  size_t K = capacity_bytes(gs);
-  if (B.size() < K + 2) die("stream B too short for K");
+  size_t K = std::min(capacity_bytes(gs), B.size() - 1);
   if (B[0] != 0) die("stream B does not start with the zero cache byte");
   // the carried number; the reader folds the digits in file order (Horner
   // x = x * radix + digit), so they come out of X from the last one

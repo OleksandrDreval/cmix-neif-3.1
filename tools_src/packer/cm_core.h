@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 /* cm_core.h - x86-aware context-mixing codec for the packer stub.
  *
  * Encoder (host tool, pack_tool.c) and decoder (stub) share THIS file, so
@@ -720,14 +723,23 @@ static int cm_ac_decode(cm_ac *a, int p12) {
   return bit;
 }
 
-static size_t cm_compress(const unsigned char *src, size_t n, unsigned char *out) {
-  cm_ac a; size_t i; int b;
+static size_t cm_compress_k(const unsigned char *src, size_t n, unsigned char *out, size_t nd, size_t *k_out) {
+  cm_ac a; size_t i, ke = 0, cl; int b;
   if (!cm_model_init()) return 0;
   if (CM_WARM_P) cm_warm();
   cm_ac_enc_init(&a, out);
-  for (i = 0; i < n; ++i)
+  for (i = 0; i < n; ++i) {
+    if (i == nd) ke = a.outn + 4;
     for (b = 7; b >= 0; --b) { int bit = (src[i] >> b) & 1; cm_ac_encode(&a, bit, cm_predict()); cm_update(bit); }
-  return cm_ac_enc_flush(&a);
+  }
+  cl = cm_ac_enc_flush(&a);
+  if (nd >= n || ke > cl) ke = cl;
+  if (ke < 1) ke = 1;
+  if (k_out) *k_out = ke;
+  return cl;
+}
+static size_t cm_compress(const unsigned char *src, size_t n, unsigned char *out) {
+  return cm_compress_k(src, n, out, n, 0);
 }
 /* Decodes n bytes; returns the number of input bytes consumed (K), 0 = no memory. */
 static size_t cm_decompress(const unsigned char *src, size_t srcn, unsigned char *out, size_t n) {

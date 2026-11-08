@@ -1,8 +1,12 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // This SSE code was written by Eugene Shelwien.
 // https://encode.ru/threads/2515-mod_ppmd
 
 #include "sse.h"
 #include "../page_registry.h"
+#include "../cold_size.h"
 
 #include <math.h>
 
@@ -127,20 +131,10 @@ uint sq_i( uint p ) {
   return p;
 }
 
-double st_d( double p ) {
-  p = st(p/SCALE);
-  return p;
-}
-
-double sq_d( double p ) {
-  p = sq(p) * SCALE;
-  return p;
-}
-
 word t_st[SCALE];
 word t_sq[SCALE];
 
-uint Init_ST_SQ( void ) {
+COLD_SIZE_ATTR uint Init_ST_SQ( void ) {
   uint i,s,x,y;
 
 #pragma clang loop vectorize(disable) interleave(disable) unroll(disable)  // one-time table: scalar code is smaller
@@ -171,15 +165,6 @@ uint Extrap( int p1, int C ) {
   if( p1<1 ) p1=1;
   if( p1>mSCALE ) p1=mSCALE;
   return p1;
-}
-
-uint WExtrap( int _p1, int C ) {
-  double p1 = st_d(_p1-hSCALE);
-  p1 = (p1*C)/8192;
-  _p1 = sq_d(p1);
-  if( _p1<0 ) _p1=0;
-  if( _p1>SCALE ) _p1=SCALE;
-  return _p1+hSCALE;
 }
 
 struct Mixer {
@@ -247,7 +232,7 @@ struct M_T {
   SSEi<7> s7[M_sm7x_Volume];
   Mixer x2[M_mix2_Volume];
 
-  void M_Init( void ) {
+  COLD_SIZE_ATTR void M_Init( void ) {
 
     uint i;
 
@@ -259,8 +244,6 @@ struct M_T {
 
     M_j=1; M_pc=0; M_ffl=0;
 
-  }
-  void M_Quit( void ) {
   }
 };
 

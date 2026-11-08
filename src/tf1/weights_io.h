@@ -68,7 +68,7 @@ inline float bf16_to_f32(uint16_t bits) {
 }  // namespace fx2
 
 #include <type_traits>
-static_assert(0xc3aea41222169537ULL == 0xc3aea41222169537ULL,
+static_assert(0x759e23d8d8cc1236ULL == 0x759e23d8d8cc1236ULL,
               "the stamped name list comes from another container than the stamped weights");
 namespace fx2 {
 namespace namen {

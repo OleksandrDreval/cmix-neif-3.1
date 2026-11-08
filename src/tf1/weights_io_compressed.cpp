@@ -443,7 +443,8 @@ void CopyWarmCN(CountNode* dst, const CountNode* src, size_t n, int sh) {
 // the models of load_v2 that this container reaches
 struct ModelleId {
   uint8_t meta_prev;
-  CountNode zrow, tname, tblock, tmeta, sign_int4w;
+  CountNode zrow, tname, tblock, tmeta;
+  CountNode sign_int4w[kNamenN * 128];
   CountNode cmeta[256 * 256];   // order-1 metadata trees
   CountNode cplane[2 * 256];    // byte planes 0 and 1 of ENC_PLANE4
   uint16_t plane[4 * 256];      // byte planes 2 and 3 of ENC_PLANE4
@@ -466,7 +467,7 @@ struct ModelleId {
 __attribute__((noinline, cold)) void NpFrisch(ModelleId* m) {
   FrischInt4(m->cint4w);
   m->zrow = CountNode();
-  m->sign_int4w = CountNode();
+  FrischCN(m->sign_int4w, kNamenN * 128);
   m->last_zrow_n = 0;
   m->last_int4_ci = m->last_bf16_ci = m->last_f32_ci = -1;
   Frisch16(m->f32hl, 257 * 256);
@@ -511,8 +512,9 @@ WeightsFile LoadId(Reader& r, const char* path) {
   uint32_t* x = static_cast<uint32_t*>(std::calloc(nx, sizeof(uint32_t)));   // the carried number
   uint8_t* bufB = nullptr;   // stream B with its carried head
   ModelleId* m = static_cast<ModelleId*>(std::calloc(1, sizeof(ModelleId)));
-  m->zrow = m->tname = m->tblock = m->tmeta = m->sign_int4w = CountNode();
+  m->zrow = m->tname = m->tblock = m->tmeta = CountNode();
   m->last_int4_ci = m->last_bf16_ci = m->last_f32_ci = -1;
+  FrischCN(m->sign_int4w, kNamenN * 128);
   FrischCN(m->cmeta, 256 * 256);
   FrischCN(m->cplane, 2 * 256);
   Frisch16(m->plane, 4 * 256);
@@ -646,22 +648,25 @@ WeightsFile LoadId(Reader& r, const char* path) {
     switch (encoding) {
       case ENC_INT4W: {
         // one zero-row flag per row, then 3-bit |q| through the per-name width
-        // context tree plus shared adaptive sign bit; zero rows stay zeroed
+        // context tree plus 128-state 2D/column-polarity sign context
         std::free(m->last_zrow);
         m->last_zrow = static_cast<uint8_t*>(std::calloc(rows ? rows : 1, 1));
         m->last_zrow_n = rows;
         CountNode* cw = &m->cint4w[ci * 96];
+        CountNode* sw = &m->sign_int4w[ci * 128];
         if (cw[0].n0) {
           cw[0].n0 = 0;
           if (m->last_int4_ci >= 0) {
             CopyWarmCN(cw + 1, &m->cint4w[m->last_int4_ci * 96 + 1], 95, 3);
             for (size_t u = 4; u < 96; u += 8)
               if (cw[u].n0 < 24) cw[u].n0 = 24;
+            CopyWarmCN(sw, &m->sign_int4w[m->last_int4_ci * 128], 128, 4);
           }
         }
         m->last_int4_ci = int(ci);
         int8_t* out = reinterpret_cast<int8_t*>(t.data);
-        uint64_t* cs = static_cast<uint64_t*>(std::calloc(cols, sizeof(uint64_t)));
+        uint64_t* cs = static_cast<uint64_t*>(std::calloc(cols * 2, sizeof(uint64_t)));
+        int* cstate = reinterpret_cast<int*>(cs + cols);
         uint64_t n = 0, T = 0, N = 0;
         for (size_t r0 = 0; r0 < rows; r0++) {
           int8_t* row = out + r0 * cols;
@@ -670,6 +675,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
             continue;
           }
           uint64_t rs = 0;
+          uint32_t ps = 0;
           for (size_t k = 0; k < cols; k++) {
             uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
             if (M < 1) M = 1;
@@ -679,7 +685,14 @@ WeightsFile LoadId(Reader& r, const char* path) {
             if (b > 11) b = 11;
             uint32_t mag = dec.decode_ctree(&cw[b * 8], 3, CNT_LIMIT_INT4W);
             int v = int(mag);
-            if (mag && dec.decode_cbit(&m->sign_int4w, CNT_LIMIT_SIGN)) v = -v;
+            if (mag) {
+              int st = cstate[k];
+              uint32_t ctx = (ps & 3u) | (((mag - 1u) >> 1) << 2) | (uint32_t(st & 3) << 4) | (uint32_t(st < 0) << 6);
+              int bit = dec.decode_cbit(&sw[ctx], CNT_LIMIT_SIGN);
+              if (bit) v = -v;
+              ps = (ps << 1) | uint32_t(bit);
+              cstate[k] = ((st & ~3) + (v << 2)) | (bit + 1);
+            }
             row[k] = int8_t(v);
             rs += mag;
             cs[k] += mag;
@@ -817,7 +830,7 @@ WeightsFile WeightsFile::load_compressed(const char* path) {
   // reader decodes (it was a second read of the file in the engine)
   unsigned long long h = 14695981039346656037ULL;
   for (size_t i = 0; i < n; i++) h = (h ^ buf[i]) * 1099511628211ULL;
-  if (h != 0xc3aea41222169537ULL)
+  if (h != 0x759e23d8d8cc1236ULL)
     msg_stop(207)
 ;
   Reader r{buf + 8, n - 8, path};   // behind the magic (fixed by the fingerprint)

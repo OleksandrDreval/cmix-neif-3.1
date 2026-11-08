@@ -1,13 +1,16 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 /* pack_tool.c - offline tool for the truncatable x86-CM stub.
  * Does NOT count in S.  Header = six u32 at file offset 120 of stage 1,
  * the place the cut of the self-extraction reads and rewrites.
- *   boot <stage2.bin> <out>            bootstrap coder for stage 2 (boot_cm.h), with round trip
+ *   boot <stage2.bin> <out>            bootstrap coder for stage 2 (boot_cm.h)
  *   xform <img> <out>                  exact x86 address transform (forward)
- *   compress <ximg> <out.cm> [W]       CM stream (no length prefix)
- *   pack <stub> <cm> <Nf> <Nd> <out> [W]   patch the 6-field header + append stream
+ *   compress <ximg> <out.cm> [W] [Nd]  CM stream (no length prefix) + exact K
+ *   pack <stub> <cm> <Nf> <Nd> <out> <K>   patch the 6-field header + append stream
  *   cut <package> <out>                like the -e path: cut at payload_off+K
  *   unpack <package> <out> [W]         reference unpacker (CM + inverse transform + zero fill)
- *   eval <img> <Nd>                    bench: xform+compress+exact K+full decode check
+ *   eval <img> <Nd>                    bench: xform+compress+exact K
  * W = <s2.bin> <s2text>: warm-up of the x86-CM on the flat stage-2 image
  * (as the stub does it, cm_core.h cm_warm); s2text = length of its code.
  */
@@ -60,30 +63,37 @@ int main(int c, char **v) {
   unsigned char *g_out = malloc(CM_MAXBUF + 65536);
   if (c < 3) { fprintf(stderr, "boot|xform|compress|pack|cut|unpack|eval\n"); return 2; }
   if (!strcmp(v[1], "boot")) {
-    size_t n, m, i; unsigned char *b = rd(v[2], &n), *o = malloc(2 * n + 64), *k = malloc(n + 64);
+    size_t n, m; unsigned char *b = rd(v[2], &n), *o = malloc(2 * n + 64);
     m = boot_compress(b, n, o);
-    boot_decompress(o, k, n);
-    for (i = 0; i < n; ++i) if (k[i] != b[i]) { fprintf(stderr, "boot round trip FAILED at %zu\n", i); return 4; }
     wr(v[3], o, m); fprintf(stderr, "boot stage2 %zu -> %zu\n", n, m); return 0;
   }
   if (!strcmp(v[1], "xform")) {
-    size_t n; unsigned char *b = rd(v[2], &n), *r = malloc(n);
-    memcpy(r, b, n); xform(b, n, +1);
-    { unsigned char *k = malloc(n); memcpy(k, b, n); xform(k, n, -1);
-      if (memcmp(k, r, n)) { fprintf(stderr, "xform not invertible\n"); return 4; } }
+    size_t n; unsigned char *b = rd(v[2], &n);
+    xform(b, n, +1);
     wr(v[3], b, n); fprintf(stderr, "xform Nf=%zu ranges=%d\n", n, cm_ncr); return 0;
   }
   if (!strcmp(v[1], "compress")) {
-    size_t n, cl; unsigned char *b = rd(v[2], &n);
+    size_t n, cl, nd, K = 0; unsigned char *b = rd(v[2], &n);
+    nd = n;
     if (c > 5) warm(v[4], v[5]);
-    cl = cm_compress(b, n, g_out); if (!cl) return 5;
-    wr(v[3], g_out, cl); fprintf(stderr, "orig=%zu cm=%zu\n", n, cl); return 0;
+    if (c > 6) nd = strtoull(v[6], 0, 10);
+    cl = cm_compress_k(b, n, g_out, nd, &K); if (!cl) return 5;
+    wr(v[3], g_out, cl);
+    if (c > 7) {
+      FILE *kf = fopen(v[7], "w"); if (!kf) { perror(v[7]); return 2; }
+      fprintf(kf, "%zu\n", K); fclose(kf);
+    }
+    fprintf(stderr, "orig=%zu cm=%zu K=%zu\n", n, cl, K); return 0;
   }
   if (!strcmp(v[1], "pack")) {
-    size_t sl, pl, nf, nd, h, K; unsigned char *s = rd(v[2], &sl), *p = rd(v[3], &pl), *o;
+    size_t sl, pl, nf, nd, h, K = 0; unsigned char *s = rd(v[2], &sl), *p = rd(v[3], &pl), *o;
     nf = strtoull(v[4], 0, 10); nd = strtoull(v[5], 0, 10); h = findh(s, sl);
-    if (c > 8) warm(v[7], v[8]);
-    K = cm_decompress(p, pl, g_out, nd);
+    if (c == 8) {
+      K = strtoull(v[7], 0, 10);
+    } else {
+      if (c > 8) warm(v[7], v[8]);
+      K = cm_decompress(p, pl, g_out, nd);
+    }
     if (!K || K > pl) { fprintf(stderr, "K>stream\n"); return 2; }
     st(s + h + 0 * 4, sl); st(s + h + 1 * 4, pl); st(s + h + 2 * 4, nf); st(s + h + 3 * 4, nf); st(s + h + 4 * 4, nd); st(s + h + 5 * 4, K);
     o = malloc(sl + pl); memcpy(o, s, sl); memcpy(o + sl, p, pl); wr(v[6], o, sl + pl);

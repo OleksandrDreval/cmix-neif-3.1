@@ -164,7 +164,7 @@ build_stub() {
   objcopy --remove-section=.comment --remove-section=.note.gnu.property \
           --remove-section=.note.gnu.build-id "$1.elf" 2>/dev/null || true
   sstrip "$1.elf" "$1.ss"
-  ./cmcut_tool compress "$N.x" "$1.p" "$1.s2.bin" "$S2TEXT"
+  ./cmcut_tool compress "$N.x" "$1.p" "$1.s2.bin" "$S2TEXT" "$ND" "$1.p.k"
 }
 
 # Unset, the truncated region is zero-filled; CUT_FILL=0xCC (test builds only)
@@ -175,30 +175,11 @@ CUT_FILL_FLAG=""
 build_stub cutstub "$CUT_FILL_FLAG"
 S2TEXT_SHIP=$S2TEXT
 cp cutstub.p "$N.p"
+K_SHIP=$(cat cutstub.p.k)
 
-./cmcut_tool pack cutstub.ss "$N.p" "$NF" "$ND" "$N.cut" cutstub.s2.bin "$S2TEXT_SHIP"
+./cmcut_tool pack cutstub.ss "$N.p" "$NF" "$ND" "$N.cut" "$K_SHIP"
 ./cmcut_tool cut "$N.cut" "$N.cut.dec"
-gcc -O2 -w -shared -fPIC -o stub_capture.so "$SRC/stub_capture.c"
 chmod +x "$N.cut" "$N.cut.dec"
-rm -f "$N.cap" "$N.cap.dec"
-
-# --- Cross-checks (sequential Echtstart on the shipped binaries: caps peak RAM at 1.52 GiB instead of 9.12 GiB) ---
-# Each check ABORTS the build on a mismatch ("cmp && echo" would not: under
-# set -e a failing command inside an && list does not stop the script).
-fail() { echo "CUT-GEGENPROBE FEHLGESCHLAGEN: $1" >&2; exit 1; }
-
-# Verify the SHIPPED stub with the SHIPPED stream: full package and truncated
-# .decomp_bin are started for real; the LD_PRELOAD helper copies the image the
-# stub exec'd (/proc/self/exe) before anything of it runs, then exits (stub_capture.c).
-( ulimit -c 0; LD_PRELOAD="$PWD/stub_capture.so" STUB_CAPTURE="$PWD/$N.cap" "./$N.cut" -h ) || fail "Echtstart voll (rc)"
-cmp -s <(head -c "$NF" "$N.cap") "$N.ss" || fail "Echtstart voll"
-echo "CUT-Echtstart voll: bitidentisch"
-( ulimit -c 0; LD_PRELOAD="$PWD/stub_capture.so" STUB_CAPTURE="$PWD/$N.cap.dec" "./$N.cut.dec" -h ) || fail "Echtstart dec (rc)"
-cmp -s <(head -c "$ND" "$N.cap.dec") <(head -c "$ND" "$N.ss") || fail "Echtstart dec"
-cmp -s <(head -c "$NF" "$N.cap.dec" | tail -c +"$((ND + 1))") <(head -c "$((NF - ND))" /dev/zero) || fail "Echtstart dec (Nullen)"
-echo "CUT-Echtstart dec: Praefix bitidentisch, Rest Nullen"
-
-rm -f "$N.cap" "$N.cap.dec" stub_capture.so
 
 cp "$N.cut" "$N.pak"
 

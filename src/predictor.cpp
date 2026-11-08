@@ -59,6 +59,8 @@ void Predictor::FreeFxcmMemory() {
 
 void Predictor::FreeFxcmRest() {
   fxcm_model_.FreeRest();
+  free(wordlbl_);
+  wordlbl_ = nullptr;
   using namespace semantic_cache;
   constexpr size_t kSemTotal = (size_t)kN * kKB + (size_t)kN +
       ((size_t)kL << kB) * kM * sizeof(Slot) + (size_t)kN * 4 + (size_t)kHist;
@@ -664,7 +666,6 @@ __attribute__((noinline)) void Predictor::EndLearn(int bit) {
 
 #include <sys/mman.h>
 #include "page_registry.h"
-namespace ppmd_page { int raum(unsigned long long bytes); }   // models/ppmd_page.cpp
 namespace {
 static inline uint32_t SemRng(uint64_t& s) {
   s ^= s >> 12; s ^= s << 25; s ^= s >> 27;
@@ -820,8 +821,6 @@ __attribute__((noinline)) COLD_SIZE_ATTR void Predictor::SemInit() {
     msg_note(553);
     exit(1);
   }
-  PAGE_REGISTRY_ADD(p, kSemTotal);
-  ppmd_page::raum(kSemTotal);
   s.key  = p;
   s.val  = p + n0;
   s.slot = (Slot*)(p + n0 + n1);

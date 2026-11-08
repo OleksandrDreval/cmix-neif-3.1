@@ -510,12 +510,12 @@ static_assert(7 == 0 ||
                    88 == Head::inw && 39 == Head::n1),
               "the stamped slot blobs have another geometry (cells/inputs/input width/stage-1 width) than this head");
 
-float* Alloc(int n) {
+COLD_SIZE_ATTR float* Alloc(int n) {
   float* p = (float*)std::calloc((size_t)n > 0 ? (size_t)n : 1, sizeof(float));
   return p;
 }
 
-void Head::Free() {
+COLD_SIZE_ATTR void Head::Free() {
   std::free(win); std::free(bin); std::free(wih); std::free(whh);
   std::free(bg); std::free(wout);
   std::free(m1win); std::free(m1bin); std::free(m1wih); std::free(m1whh);
@@ -536,7 +536,7 @@ void Head::Free() {
   std::memset(this, 0, sizeof(*this));
 }
 
-void Head::Build() {
+COLD_SIZE_ATTR void Head::Build() {
   const int C = cells;
 
   // Build guard for the state-vector block.  A block that is switched

@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 // Implementation of the log-bilinear word model; the header describes the
 // mechanism, the declared divergences from the zmix instrument and the memory.
 //
@@ -12,7 +15,7 @@
 // values.
 
 #include "word_label.h"
-#include "page_registry.h"
+#include "cold_size.h"
 
 #include <cmath>
 #include <cstdint>
@@ -231,7 +234,7 @@ void ByteDone(State* s, uint32_t byte) {
 // Public interface.
 // --------------------------------------------------------------------------
 
-State* Create() {
+COLD_SIZE_ATTR State* Create() {
   // ONE allocation: the state, then node rows, embeddings and biases.  calloc
   // hands out zero pages that stay lazy until touched (header, divergence C),
   // and a reset gives the whole block back with one free().
@@ -239,7 +242,6 @@ State* Create() {
   constexpr size_t kE = (size_t)kVMax * kD;
   constexpr size_t kBytes = sizeof(State) + (kNd + kE + kNodeCount) * sizeof(float);
   State* s = (State*)calloc(kBytes, 1);
-  PAGE_REGISTRY_ADD(s, kBytes);
   if (s == nullptr) abort();   // no 69 MiB: a host fault, SIGABRT is loud
   float* t = (float*)(s + 1);
   s->nd = t;
@@ -258,7 +260,7 @@ State* Create() {
   return s;
 }
 
-State* Neu(State* alt) {
+COLD_SIZE_ATTR State* Neu(State* alt) {
   free(alt);
   return Create();
 }

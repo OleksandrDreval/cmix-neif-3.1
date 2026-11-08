@@ -236,9 +236,7 @@ static void dyn_pruefe(void) {
   if (rss_kib > V.dyn_rss_spitze_kib) V.dyn_rss_spitze_kib = rss_kib;
   const unsigned long long eigen_kib = ((V.rahmen + SPIEGEL) * SEITE) >> 10;
   const unsigned long long fremd_kib =
-      (rss_kib > eigen_kib ? rss_kib - eigen_kib : 0ULL)
-      + V.dyn_vorab_kib   // raum(): memory about to become resident
-      ;
+      (rss_kib > eigen_kib ? rss_kib - eigen_kib : 0ULL);
   const unsigned long long deckel = DYN_KLEMME_KIB - DYN_ABSTAND_KIB;
   unsigned long long frei_kib = deckel > fremd_kib ? deckel - fremd_kib : 0ULL;
   // Helper cap: never more frames than there have been
@@ -324,27 +322,6 @@ void dyn_tick(void) {
   if (--V.dyn_rest) return;
   V.dyn_rest = DYN_TAKT;
   dyn_pruefe();
-}
-
-// Room for a large table that the caller makes resident right after this
-// call (the semantic cache, at the first stream byte).  The poll only sees
-// memory that is already resident and comes 256 model bytes later; a table
-// that fills in one go would push the process past the clamp first
-// (the bucket table of the semantic cache filled at the text start with
-// +902 MB in 100 ms on top of a 4 GiB pool).  So the poll runs here once with `bytes`
-// counted as foreign memory: the pool shrinks at once to the largest step
-// that fits, before the table is touched.  The poll stays the only caller of
-// the resize, so the profiled shape of dyn_tick() stays as it is.  Returns 1
-// if the caller may make the bytes resident now (this process owns the pool
-// and reads its RSS), 0 otherwise (helper, look-ahead coder, dead sensor).
-// The pool size does not change the model output.
-int raum(unsigned long long bytes) {
-  if (V.dyn_aus || hilfs || !V.puffer) return 0;
-  V.dyn_vorab_kib = bytes >> 10;
-  V.dyn_rest = 1;              // the next tick polls
-  dyn_tick();
-  V.dyn_vorab_kib = 0;         // from here on the table is in the RSS itself
-  return V.dyn_aus ? 0 : 1;
 }
 
 // Page-in of ONE frame.  The previous resident is written back unless the

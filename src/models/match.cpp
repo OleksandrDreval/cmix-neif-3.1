@@ -1,3 +1,6 @@
+// Modified in November 2026 by Oleksandr Dreval (https://github.com/OleksandrDreval)
+// for cmix-neif-3.1 (https://github.com/OleksandrDreval/cmix-neif-3.1).
+// SPDX-License-Identifier: GPL-3.0-only
 #include "match.h"
 #include "../page_registry.h"
 
@@ -56,7 +59,7 @@ void Match::ByteUpdate() {
     ++cur_match_;
   }
   cur_match_ = hist_div_.Mod(cur_match_);
-  cur_byte_ = history_.at(cur_match_);
+  cur_byte_ = history_[cur_match_];
   bit_pos_ = 128;
 
   unsigned long long match_context = match_length_ / 32;

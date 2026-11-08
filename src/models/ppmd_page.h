@@ -99,7 +99,6 @@ struct Vorrat {
   // without a pread.  Cleared with the file at a PPMd restart.
   unsigned char* dat;
   unsigned long long loecher;      // page-ins served from the hole map
-  unsigned long long dyn_vorab_kib;   // raum(): resident soon, counted as foreign by the poll
 };
 
 static const unsigned int LEER = 0xFFFFFFFFu;
@@ -116,9 +115,6 @@ void freigeben(void);
 // Called ONCE PER MODEL BYTE: one decrement and one compare.  Against 1.714
 // translations per model byte that is not measurable.
 void dyn_tick(void);
-// Shrinks the pool so that `bytes` about to become resident in one go fit
-// under the clamp; 1 = the caller may touch them now (ppmd_page.cpp).
-int raum(unsigned long long bytes);
 // Called from InitSubAllocator with the byte offset of UnitsStart: places the
 // upper band.  Called between two model bytes (ppmd_PrepareByte) when a front
 // comes near the boundary: write back, switch to direct mapping for good.
