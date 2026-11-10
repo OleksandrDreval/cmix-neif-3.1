@@ -132,31 +132,6 @@ namespace fx2 {
 
 namespace {
 
-[[maybe_unused]] [[noreturn]] void die(const char* fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  std::fprintf(stderr, "\n");
-  std::vfprintf(stderr, fmt, ap);
-  std::fprintf(stderr, "\n");
-  va_end(ap);
-  std::exit(1);
-}
-
-[[maybe_unused]] size_t dtype_size(uint8_t dtype) {
-  switch (dtype) {
-    case DT_I8:
-      return 1;
-    case DT_BF16:
-      return 2;
-    case DT_F32:
-      return 4;
-    case DT_I32:
-      return 4;
-    default:
-      msg_stop(234);
-  }
-}
-
 struct Reader {
   const uint8_t* p;
   size_t left;
@@ -176,49 +151,7 @@ struct Reader {
     read(&v, 4);
     return v;
   }
-  uint8_t u8() {
-    uint8_t v;
-    read(&v, 1);
-    return v;
-  }
 };
-
-// byte-wise range decoder matching pysrc/weights_compress.py RangeDecoder
-// (LZMA-style: 32-bit range, renormalization below 2^24)
-struct RangeDecoder {
-  const uint8_t* p;
-  const uint8_t* end;
-  uint32_t range = 0xFFFFFFFFu;
-  uint32_t code = 0;
-
-  RangeDecoder(const uint8_t* data, size_t len) : p(data), end(data + len) {
-    p++;  // the first byte is the encoder's initial zero cache
-    for (int i = 0; i < 4; i++) code = (code << 8) | byte();
-  }
-  uint8_t byte() { return p < end ? *p++ : 0; }
-  void normalize() {
-    while (range < (1u << 24)) {
-      code = (code << 8) | byte();
-      range <<= 8;
-    }
-  }
-  uint32_t decode_uniform(uint32_t tot) {
-    uint32_t r = range / tot;
-    uint32_t s = code / r;
-    if (s > tot - 1) s = tot - 1;
-    code -= r * s;
-    range = r;
-    normalize();
-    return s;
-  }
-};
-
-[[maybe_unused]] void decode_i8_uniform15(const uint8_t* stream, size_t stream_len, int8_t* out,
-                         size_t count) {
-  RangeDecoder rd(stream, stream_len);
-  for (size_t i = 0; i < count; i++)
-    out[i] = int8_t(int(rd.decode_uniform(15)) - 7);
-}
 
 // ---------------------------------------------------------------------------
 // format v2
@@ -334,9 +267,7 @@ float sincosf_cuda(float a, int cos_bias) {
 struct CountNode {
   uint16_t n0 = 1, n1 = 1;
 };
-constexpr bool g_np2 = true;
 enum : uint32_t {
-  CNT_LIMIT_INT4 = 1023,
   CNT_LIMIT_NAME = 255,
   CNT_LIMIT_META = 255,
   CNT_LIMIT_PLANE01 = 1023,  // v4: byte planes 0 and 1 of ENC_PLANE4
@@ -347,6 +278,22 @@ enum : uint32_t {
   CNT_LIMIT_BF16C_HI = 511,  // per-name counting hi-byte tree of ENC_BF16C
   CNT_LIMIT_F32HC = 255,     // v5 + K: the high-byte trees of ENC_F32HC
 };
+
+uint32_t ProbCN(const CountNode* n) {
+  uint32_t p = 2048u * n->n0 / (uint32_t(n->n0) + n->n1);
+  return p < 1 ? 1 : (p > 2047 ? 2047 : p);
+}
+void UpdCN(CountNode* n, int bit, uint32_t limit) {
+  if (bit) n->n1++; else n->n0++;
+  if (uint32_t(n->n0) + n->n1 > limit) {
+    n->n0 = uint16_t(n->n0 >> 1 ? n->n0 >> 1 : 1);
+    n->n1 = uint16_t(n->n1 >> 1 ? n->n1 >> 1 : 1);
+  }
+}
+void Upd16(uint16_t* prob, int bit, int sh) {
+  uint32_t p = *prob;
+  *prob = uint16_t(bit ? p - (p >> sh) : p + ((2048 - p) >> sh));
+}
 
 struct BinDecoder {
   const uint8_t* p;
@@ -359,23 +306,28 @@ struct BinDecoder {
     for (int i = 0; i < 4; i++) code = (code << 8) | byte();
   }
   uint8_t byte() { return p < end ? *p++ : 0; }
-  int decode_bit(uint16_t* prob, int sh = 5) {
-    uint32_t bound = (range >> 11) * *prob;
+  int decode_p(uint32_t pr) {
+    if (pr < 1) pr = 1;
+    else if (pr > 2047) pr = 2047;
+    uint32_t bound = (range >> 11) * pr;
     int bit;
     if (code < bound) {
       range = bound;
-      *prob = uint16_t(*prob + ((2048 - *prob) >> sh));
       bit = 0;
     } else {
       code -= bound;
       range -= bound;
-      *prob = uint16_t(*prob - (*prob >> sh));
       bit = 1;
     }
     while (range < (1u << 24)) {
       code = (code << 8) | byte();
       range <<= 8;
     }
+    return bit;
+  }
+  int decode_bit(uint16_t* prob, int sh = 5) {
+    int bit = decode_p(*prob);
+    Upd16(prob, bit, sh);
     return bit;
   }
   // probs: (1 << nbits) entries, indices 1.. used
@@ -385,30 +337,9 @@ struct BinDecoder {
       node = (node << 1) | decode_bit(&probs[node], node < 4 ? s0 : s1);
     return node - (1u << nbits);
   }
-
   int decode_cbit(CountNode* n, uint32_t limit) {
-    uint32_t p = 2048u * n->n0 / (uint32_t(n->n0) + n->n1);
-    if (p < 1) p = 1;
-    else if (p > 2047) p = 2047;
-    uint32_t bound = (range >> 11) * p;
-    int bit;
-    if (code < bound) {
-      range = bound;
-      bit = 0;
-    } else {
-      code -= bound;
-      range -= bound;
-      bit = 1;
-    }
-    while (range < (1u << 24)) {
-      code = (code << 8) | byte();
-      range <<= 8;
-    }
-    if (bit) n->n1++; else n->n0++;
-    if (uint32_t(n->n0) + n->n1 > limit) {
-      n->n0 = uint16_t(n->n0 >> 1 ? n->n0 >> 1 : 1);
-      n->n1 = uint16_t(n->n1 >> 1 ? n->n1 >> 1 : 1);
-    }
+    int bit = decode_p(ProbCN(n));
+    UpdCN(n, bit, limit);
     return bit;
   }
   // nodes: (1 << nbits) entries, indices 1.. used
@@ -429,8 +360,8 @@ void Frisch16(uint16_t* p, size_t n) {
 void FrischCN(CountNode* p, size_t n) {
   for (size_t i = 0; i < n; i++) p[i] = CountNode();
 }
-void FrischInt4(CountNode* p) {
-  for (size_t i = 0; i < size_t(kNamenN) * 12 * 8; i++)
+void FrischInt4(CountNode* p, size_t n = size_t(kNamenN) * 12 * 8) {
+  for (size_t i = 0; i < n; i++)
     p[i] = CountNode{uint16_t((i & 7) == 4 ? 24 : ((i & 7) == 5 ? 4 : 1)), 1};
 }
 void CopyWarmCN(CountNode* dst, const CountNode* src, size_t n, int sh) {
@@ -443,22 +374,36 @@ void CopyWarmCN(CountNode* dst, const CountNode* src, size_t n, int sh) {
 // the models of load_v2 that this container reaches
 struct ModelleId {
   uint8_t meta_prev;
+  uint8_t* last_zrow;           // zero-row mask (+ row sq bucket << 1) of immediately preceding ENC_INT4W tensor
+  size_t last_zrow_n;
+  int last_int4_ci, last_bf16_ci, last_f32_ci;
+  uint16_t* bf16c[kNamenN];     // ENC_BF16C lo trees per canonical name (5 * 257 * 256), on first use
+  uint16_t* f32hl_ci[kNamenN];  // ENC_F32HC lo trees per canonical name (6 * 257 * 256), on first use
+  CountNode* bf16c_hi[kNamenN]; // ENC_BF16C hi counting tree per canonical name, on first use
+  CountNode* f32hc[kNamenN];    // ENC_F32HC hi trees per canonical name, on first use
+  CountNode* cname[65536];      // order-2 name trees, per context on first use
+  // Contiguous block of {1, 1} CountNodes:
   CountNode zrow, tname, tblock, tmeta;
+  CountNode zr_ctx[kNamenN * 4];
   CountNode sign_int4w[kNamenN * 128];
+  CountNode sign_2d[kNamenN * 256];
+  CountNode sign_rc[kNamenN * 256];
   CountNode cmeta[256 * 256];   // order-1 metadata trees
+  CountNode cm_role[8 * 256];   // header byte-role metadata trees
+  CountNode cn1[256 * 256];     // order-1 name character trees
+  CountNode cn0[256];           // order-0 name character tree
+  CountNode bf_hi_prev[256 * 256];
+  CountNode f32_hi_prev[256 * 256];
   CountNode cplane[2 * 256];    // byte planes 0 and 1 of ENC_PLANE4
+  // Contiguous block of Int4 CountNodes:
+  CountNode cint4w[kNamenN * 16 * 8];
+  CountNode c2d[kNamenN * 128 * 8];
+  CountNode c3d[kNamenN * 128 * 8];
+  // Contiguous block of 1024-initialized shift-tree uint16_t nodes:
   uint16_t plane[4 * 256];      // byte planes 2 and 3 of ENC_PLANE4
   uint16_t bf16_hi[256];        // ENC_BF16
   uint16_t bf16_lo[256 * 256];
-  CountNode cint4w[kNamenN * 12 * 8];  // ENC_INT4W, 12 width contexts per canonical name (3-bit |q|)
   uint16_t f32hl[257 * 256];    // lo trees of ENC_F32HC
-  CountNode* cname[65536];      // order-2 name trees, per context on first use
-  uint16_t* bf16c[kNamenN];     // ENC_BF16C lo trees per canonical name, on first use
-  CountNode* bf16c_hi[kNamenN]; // ENC_BF16C hi counting tree per canonical name, on first use
-  CountNode* f32hc[kNamenN];    // ENC_F32HC hi trees per canonical name, on first use
-  uint8_t* last_zrow;           // zero-row mask of immediately preceding ENC_INT4W tensor
-  size_t last_zrow_n;
-  int last_int4_ci, last_bf16_ci, last_f32_ci;
 };
 
 // format NP, end of stream A (np_fresh_values of load_v2): the int4 trees,
@@ -474,6 +419,8 @@ __attribute__((noinline, cold)) void NpFrisch(ModelleId* m) {
   for (int c = 0; c < kNamenN; c++) {
     std::free(m->bf16c[c]);
     m->bf16c[c] = nullptr;
+    std::free(m->f32hl_ci[c]);
+    m->f32hl_ci[c] = nullptr;
     std::free(m->bf16c_hi[c]);
     m->bf16c_hi[c] = nullptr;
     std::free(m->f32hc[c]);
@@ -511,20 +458,30 @@ WeightsFile LoadId(Reader& r, const char* path) {
   const size_t nx = K / 4 + 1;
   uint32_t* x = static_cast<uint32_t*>(std::calloc(nx, sizeof(uint32_t)));   // the carried number
   uint8_t* bufB = nullptr;   // stream B with its carried head
-  ModelleId* m = static_cast<ModelleId*>(std::calloc(1, sizeof(ModelleId)));
-  m->zrow = m->tname = m->tblock = m->tmeta = CountNode();
+  ModelleId* m = static_cast<ModelleId*>(std::calloc(8, sizeof(ModelleId) / 8));
   m->last_int4_ci = m->last_bf16_ci = m->last_f32_ci = -1;
-  FrischCN(m->sign_int4w, kNamenN * 128);
-  FrischCN(m->cmeta, 256 * 256);
-  FrischCN(m->cplane, 2 * 256);
-  Frisch16(m->plane, 4 * 256);
-  Frisch16(m->bf16_hi, 256);
-  Frisch16(m->bf16_lo, 256 * 256);
-  FrischInt4(m->cint4w);
-  Frisch16(m->f32hl, 257 * 256);
+  FrischCN(&m->zrow, (&m->cplane[2 * 256] - &m->zrow));
+  FrischInt4(m->cint4w, size_t(kNamenN) * (16 + 128 + 128) * 8);
+  Frisch16(m->plane, (&m->f32hl[257 * 256] - m->plane));
 
-  auto get_meta = [&]() -> uint8_t {
-    uint8_t b = uint8_t(dec.decode_ctree(&m->cmeta[size_t(m->meta_prev) * 256], 8, CNT_LIMIT_META));
+  bool in_A = true;
+  auto get_meta = [&](size_t role) -> uint8_t {
+    CountNode* t1 = &m->cmeta[size_t(m->meta_prev) * 256];
+    uint8_t b;
+    if (in_A) {
+      CountNode* t2 = &m->cm_role[role * 256];
+      uint32_t w = role ? 15u : 10u;
+      uint32_t node = 1;
+      for (int k = 0; k < 8; k++) {
+        int bit = dec.decode_p(((16u - w) * ProbCN(&t1[node]) + w * ProbCN(&t2[node])) >> 4);
+        UpdCN(&t1[node], bit, CNT_LIMIT_META);
+        UpdCN(&t2[node], bit, CNT_LIMIT_META);
+        node = (node << 1) | uint32_t(bit);
+      }
+      b = uint8_t(node - 256);
+    } else {
+      b = uint8_t(dec.decode_ctree(t1, 8, CNT_LIMIT_META));
+    }
     m->meta_prev = b;
     return b;
   };
@@ -549,6 +506,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
     if (i == nA) {
       // end of stream A: the K low bytes of the carried number are the head of
       // stream B, in front of it its zero cache byte (skipped unread)
+      in_A = false;
       const size_t nb = size_t(1) + K + (r.left - lenA);
       bufB = static_cast<uint8_t*>(std::malloc(nb));
       std::memcpy(bufB + 1, x, K);
@@ -564,7 +522,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
         blk = dec.decode_cbit(&m->tblock, CNT_LIMIT_TMPL) ? t_prev_blk : t_prev_blk + 1;
     } else {
       char nm[256];
-      size_t len = get_meta();
+      size_t len = get_meta(0);
       uint32_t c2 = 0, c1 = 0;
       for (size_t k = 0; k < len; k++) {
         CountNode*& tree = m->cname[(c2 << 8) | c1];
@@ -572,7 +530,25 @@ WeightsFile LoadId(Reader& r, const char* path) {
           tree = static_cast<CountNode*>(std::malloc(256 * sizeof(CountNode)));
           FrischCN(tree, 256);
         }
-        const uint32_t ch = dec.decode_ctree(tree, 8, CNT_LIMIT_NAME);
+        uint32_t ch;
+        if (in_A) {
+          CountNode* t1 = &m->cn1[c1 * 256];
+          uint32_t node = 1;
+          for (int b_i = 0; b_i < 8; b_i++) {
+            uint32_t p2 = ProbCN(&tree[node]), p1 = ProbCN(&t1[node]), p0 = ProbCN(&m->cn0[node]);
+            uint32_t p = (uint32_t(tree[node].n0) + tree[node].n1 <= 3u)
+                             ? ((2u * p2 + 12u * p1 + 2u * p0) >> 4)
+                             : ((15u * p2 + p1) >> 4);
+            int bit = dec.decode_p(p);
+            UpdCN(&tree[node], bit, CNT_LIMIT_NAME);
+            UpdCN(&t1[node], bit, CNT_LIMIT_NAME);
+            UpdCN(&m->cn0[node], bit, CNT_LIMIT_NAME);
+            node = (node << 1) | uint32_t(bit);
+          }
+          ch = node - 256;
+        } else {
+          ch = dec.decode_ctree(tree, 8, CNT_LIMIT_NAME);
+        }
         nm[k] = char(ch);
         c2 = c1;
         c1 = ch;
@@ -616,10 +592,11 @@ WeightsFile LoadId(Reader& r, const char* path) {
       hlen = tmpl[ci].hlen;
       std::memcpy(hdr, tmpl[ci].hdr, hlen);
     } else {
-      hdr[0] = get_meta();
-      hdr[1] = get_meta();
+      hdr[0] = get_meta(1);
+      hdr[1] = get_meta(2);
       hlen = 3 + 4 * size_t(hdr[1]);
-      for (size_t k = 2; k < hlen; k++) hdr[k] = get_meta();
+      for (size_t k = 2; k < hlen; k++)
+        hdr[k] = get_meta(k + 1 == hlen ? 7 : (3 + ((k - 2) & 3)));
     }
     if (t_prev >= 0) tmpl[t_prev].succ = int(ci);
     tmpl[ci].hlen = uint8_t(hlen);
@@ -647,88 +624,258 @@ WeightsFile LoadId(Reader& r, const char* path) {
 
     switch (encoding) {
       case ENC_INT4W: {
-        // one zero-row flag per row, then 3-bit |q| through the per-name width
-        // context tree plus 128-state 2D/column-polarity sign context
         std::free(m->last_zrow);
         m->last_zrow = static_cast<uint8_t*>(std::calloc(rows ? rows : 1, 1));
         m->last_zrow_n = rows;
-        CountNode* cw = &m->cint4w[ci * 96];
-        CountNode* sw = &m->sign_int4w[ci * 128];
-        if (cw[0].n0) {
-          cw[0].n0 = 0;
-          if (m->last_int4_ci >= 0) {
-            CopyWarmCN(cw + 1, &m->cint4w[m->last_int4_ci * 96 + 1], 95, 3);
-            for (size_t u = 4; u < 96; u += 8)
-              if (cw[u].n0 < 24) cw[u].n0 = 24;
-            CopyWarmCN(sw, &m->sign_int4w[m->last_int4_ci * 128], 128, 4);
-          }
-        }
-        m->last_int4_ci = int(ci);
         int8_t* out = reinterpret_cast<int8_t*>(t.data);
-        uint64_t* cs = static_cast<uint64_t*>(std::calloc(cols * 2, sizeof(uint64_t)));
-        int* cstate = reinterpret_cast<int*>(cs + cols);
-        uint64_t n = 0, T = 0, N = 0;
-        for (size_t r0 = 0; r0 < rows; r0++) {
-          int8_t* row = out + r0 * cols;
-          if (dec.decode_cbit(&m->zrow, CNT_LIMIT_ZROW)) {
-            m->last_zrow[r0] = 1;
-            continue;
-          }
-          uint64_t rs = 0;
-          uint32_t ps = 0;
-          for (size_t k = 0; k < cols; k++) {
-            uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
-            if (M < 1) M = 1;
-            uint64_t rr = (rs * 65536 + 16 * M) / (k + 16);
-            uint64_t cc = (cs[k] * 65536 + 40 * M) / (n + 40);
-            uint64_t b = (2 * rr * cc) / (M * 65536);
-            if (b > 11) b = 11;
-            uint32_t mag = dec.decode_ctree(&cw[b * 8], 3, CNT_LIMIT_INT4W);
-            int v = int(mag);
-            if (mag) {
-              int st = cstate[k];
-              uint32_t ctx = (ps & 3u) | (((mag - 1u) >> 1) << 2) | (uint32_t(st & 3) << 4) | (uint32_t(st < 0) << 6);
-              int bit = dec.decode_cbit(&sw[ctx], CNT_LIMIT_SIGN);
-              if (bit) v = -v;
-              ps = (ps << 1) | uint32_t(bit);
-              cstate[k] = ((st & ~3) + (v << 2)) | (bit + 1);
+        if (in_A) {
+          static constexpr uint8_t kW2d[8] = {0, 4, 4, 3, 1, 2, 2, 3};
+          static constexpr uint8_t kW3d[8] = {0, 2, 2, 2, 0, 1, 1, 2};
+          static constexpr uint8_t kWrc[8] = {0, 3, 3, 3, 7, 6, 6, 3};
+          static constexpr uint8_t kWgr[8] = {0, 0, 0, 0, 6, 5, 5, 0};
+          CountNode* cw = &m->cint4w[ci * 128];
+          CountNode* c2 = &m->c2d[ci * 1024];
+          CountNode* c3 = &m->c3d[ci * 1024];
+          CountNode* sw = &m->sign_int4w[ci * 128];
+          CountNode* s2 = &m->sign_2d[ci * 256];
+          CountNode* sr = &m->sign_rc[ci * 256];
+          if (cw[0].n0) {
+            cw[0].n0 = 0;
+            if (m->last_int4_ci >= 0) {
+              size_t lc = size_t(m->last_int4_ci);
+              CopyWarmCN(cw + 1, &m->cint4w[lc * 128 + 1], 127, 4);
+              for (size_t u = 4; u < 128; u += 8) if (cw[u].n0 < 24) cw[u].n0 = 24;
+              CopyWarmCN(c2 + 1, &m->c2d[lc * 1024 + 1], 1023, 4);
+              for (size_t u = 4; u < 1024; u += 8) if (c2[u].n0 < 24) c2[u].n0 = 24;
+              CopyWarmCN(c3 + 1, &m->c3d[lc * 1024 + 1], 1023, 4);
+              for (size_t u = 4; u < 1024; u += 8) if (c3[u].n0 < 24) c3[u].n0 = 24;
+              CopyWarmCN(sw, &m->sign_int4w[lc * 128], 128, 4);
+              CopyWarmCN(s2, &m->sign_2d[lc * 256], 256, 4);
+              CopyWarmCN(sr, &m->sign_rc[lc * 256], 256, 4);
             }
-            row[k] = int8_t(v);
-            rs += mag;
-            cs[k] += mag;
-            T += mag;
-            N++;
+          } else {
+            CopyWarmCN(cw + 1, cw + 1, 127, 2);
+            CopyWarmCN(c2 + 1, c2 + 1, 1023, 2);
+            CopyWarmCN(c3 + 1, c3 + 1, 1023, 2);
           }
-          n++;
+          m->last_int4_ci = int(ci);
+          uint64_t* cs = static_cast<uint64_t*>(std::calloc(cols * 11, sizeof(uint64_t)));
+          int* cstate = reinterpret_cast<int*>(cs + cols);
+          uint32_t* c_vis = reinterpret_cast<uint32_t*>(cstate + cols);
+          uint32_t* c_n0 = c_vis + 8 * cols;
+          uint32_t* c_nz = c_n0 + 8 * cols;
+          uint32_t* c_off = c_nz + cols;
+          uint32_t* c_pos = c_off + cols;
+          uint64_t t_vis[8] = {0}, t_n0[8] = {0};
+          uint64_t t_nz = 0, t_off = 0, t_pos = 0, tot_sq = 0;
+          uint64_t n = 0, T = 0, N = 0;
+          int prev_z = 0, prev_g = 0;
+          for (size_t r0 = 0; r0 < rows; r0++) {
+            int8_t* row = out + r0 * cols;
+            CountNode* zc = &m->zr_ctx[ci * 4 + prev_z];
+            int zbit = dec.decode_p((4u * ProbCN(&m->zrow) + 12u * ProbCN(zc)) >> 4);
+            UpdCN(&m->zrow, zbit, CNT_LIMIT_ZROW);
+            UpdCN(zc, zbit, CNT_LIMIT_ZROW);
+            prev_z = zbit;
+            if (zbit) {
+              m->last_zrow[r0] = 1;
+              continue;
+            }
+            int gbit = dec.decode_cbit(&m->zr_ctx[ci * 4 + 2 + prev_g], CNT_LIMIT_ZROW);
+            prev_g = gbit;
+            uint64_t rs = 0, r_sq = 0;
+            uint32_t ps = 0;
+            int r_sbal = 0;
+            uint32_t r_vis[8] = {0}, r_n0[8] = {0};
+            uint32_t r_nz = 0, r_off = 0, r_pos = 0;
+            uint32_t prev_mag = 0, prev2_mag = 0;
+            for (size_t k = 0; k < cols; k++) {
+              uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
+              if (M < 1) M = 1;
+              uint64_t rr = (rs * 65536 + 16 * M) / (k + 16);
+              uint64_t cc = (cs[k] * 65536 + 40 * M) / (n + 40);
+              uint64_t w_mag = (rr * cc / M) >> 4;
+              uint32_t up_mag = (r0 > 0) ? uint32_t(std::abs(int(row[k - cols]))) : 0;
+              uint32_t dg_mag = (r0 > 0 && k > 0) ? uint32_t(std::abs(int(row[k - cols - 1]))) : 0;
+              uint32_t ur_mag = (r0 > 0 && k + 1 < cols) ? uint32_t(std::abs(int(row[k - cols + 1]))) : 0;
+              uint32_t pm_bin = prev_mag == 0 ? 0 : (prev_mag <= 2 ? 1 : (prev_mag <= 4 ? 2 : 3));
+              uint32_t um_bin = up_mag == 0 ? 0 : (up_mag <= 2 ? 1 : (up_mag <= 4 ? 2 : 3));
+              uint32_t ctx2d_base = ((pm_bin << 2) | um_bin) * 2 + (k & 1);
+              uint32_t ctx3d_base = (pm_bin << 3) | ((prev2_mag > 0 ? 1u : 0u) << 2) |
+                                    (((dg_mag + ur_mag) > 0 ? 1u : 0u) << 1) | (up_mag > 0 ? 1u : 0u);
+              uint32_t node = 1;
+              for (int bit_k = 0; bit_k < 3 - gbit; bit_k++) {
+                constexpr uint64_t dr = 16, dc = 32;
+                uint64_t t_n1 = t_vis[node] - t_n0[node];
+                uint64_t r_n1 = r_vis[node] - r_n0[node];
+                uint64_t c_n1 = c_vis[node * cols + k] - c_n0[node * cols + k];
+                uint64_t p1_t = ((t_n1 + 4) << 12) / (t_vis[node] + 8);
+                if (p1_t < 1) p1_t = 1;
+                uint64_t p1_r = ((r_n1 << 12) + dr * p1_t) / (r_vis[node] + dr);
+                uint64_t p1_c = ((c_n1 << 12) + dc * p1_t) / (c_vis[node * cols + k] + dc);
+                uint64_t w_nd = ((p1_r * p1_c) / p1_t) * 4096ull / p1_t;
+                uint64_t b = (((6 * w_mag + 2 * w_nd) >> 3) * 16ull) / (6 * 4096);
+                if (b > 15) b = 15;
+                CountNode* cn = &cw[b * 8 + node];
+                CountNode* cn2 = &c2[((uint32_t(b >> 2) << 5) | ctx2d_base) * 8 + node];
+                CountNode* cn3 = &c3[((uint32_t(b >> 2) << 5) | ctx3d_base) * 8 + node];
+                uint32_t p_tree = ProbCN(cn), p_2d = ProbCN(cn2), p_3d = ProbCN(cn3);
+                uint64_t p_t = (t_n0[node] * 2048ull + 8ull * p_tree) / (t_vis[node] + 8ull);
+                if (p_t < 1) p_t = 1;
+                uint64_t p_r = (uint64_t(r_n0[node]) * 2048ull + dr * p_t) / (r_vis[node] + dr);
+                uint64_t p_c = (uint64_t(c_n0[node * cols + k]) * 2048ull + dc * p_t) / (c_vis[node * cols + k] + dc);
+                uint64_t p_rc = (p_r * p_c) / p_t;
+                if (p_rc > 2047) p_rc = 2047;
+                uint64_t p_grid = p_tree;
+                if (kWgr[node] > 0) {
+                  uint64_t poff_t = (t_off * 2048ull + 16ull * 320ull) / (t_nz + 16ull);
+                  if (poff_t < 1) poff_t = 1;
+                  uint64_t poff_r = (uint64_t(r_off) * 2048ull + dr * poff_t) / (r_nz + dr);
+                  uint64_t poff_c = (uint64_t(c_off[k]) * 2048ull + dc * poff_t) / (c_nz[k] + dc);
+                  uint64_t p_base = (p_tree + p_rc) >> 1;
+                  uint64_t off_p = ((2048ull - p_base) * poff_r / poff_t) * poff_c / poff_t;
+                  if (off_p > 2047) off_p = 2047;
+                  p_grid = 2048ull - off_p;
+                }
+                uint64_t wt = 32 - kW2d[node] - kW3d[node] - kWrc[node] - kWgr[node];
+                int bit = dec.decode_p(uint32_t((wt * p_tree + kW2d[node] * p_2d + kW3d[node] * p_3d + kWrc[node] * p_rc + kWgr[node] * p_grid) >> 5));
+                UpdCN(cn, bit, 3071);
+                UpdCN(cn2, bit, 3071);
+                UpdCN(cn3, bit, 3071);
+                r_vis[node]++; c_vis[node * cols + k]++; t_vis[node]++;
+                if (!bit) { r_n0[node]++; c_n0[node * cols + k]++; t_n0[node]++; }
+                node = (node << 1) | uint32_t(bit);
+              }
+              if (gbit) node = (node << 1) | uint32_t(node == 7);
+              uint32_t mag = node - 8;
+              prev2_mag = prev_mag;
+              prev_mag = mag;
+              int v = int(mag);
+              if (mag) {
+                int st = cstate[k];
+                uint32_t ctx = (ps & 3u) | (((mag - 1u) >> 1) << 2) | (uint32_t(st & 3) << 4) | (uint32_t(st < 0) << 6);
+                int up_v = (r0 > 0) ? int(row[k - cols]) : 0;
+                int left_v = (k > 0) ? int(row[k - 1]) : 0;
+                uint32_t up_s = up_v == 0 ? 0u : (up_v < 0 ? 2u : 1u);
+                uint32_t lf_s = left_v == 0 ? 0u : (left_v < 0 ? 2u : 1u);
+                int c_sum = st >> 2;
+                uint32_t c_str = c_sum == 0 ? 0u : (c_sum < -12 ? 3u : (c_sum < 0 ? 2u : 1u));
+                uint32_t ctx2 = (lf_s & 3u) | ((up_s & 3u) << 2) | ((c_str & 3u) << 4) | (((mag - 1u) >> 1) << 6);
+                uint32_t r_pol = r_sbal == 0 ? 0u : (r_sbal < -8 ? 3u : (r_sbal < 0 ? 2u : 1u));
+                uint32_t ctx3 = (ps & 3u) | ((r_pol & 3u) << 2) | ((c_str & 3u) << 4) | ((up_s & 3u) << 6);
+                uint64_t ps_t = (t_pos * 2048ull + 64ull * 1024ull) / (T + 64ull);
+                if (ps_t < 1) ps_t = 1;
+                uint64_t ps_r = (uint64_t(r_pos) * 2048ull + 192ull * ps_t) / (rs + 192ull);
+                uint64_t ps_c = (uint64_t(c_pos[k]) * 2048ull + 320ull * ps_t) / (cs[k] + 320ull);
+                uint64_t p_src = (ps_r * ps_c) / ps_t;
+                if (p_src > 2047) p_src = 2047;
+                int bit = dec.decode_p((14u * ProbCN(&sw[ctx]) + 6u * ProbCN(&s2[ctx2]) + 4u * ProbCN(&sr[ctx3]) + 8u * uint32_t(p_src)) >> 5);
+                UpdCN(&sw[ctx], bit, CNT_LIMIT_SIGN);
+                UpdCN(&s2[ctx2], bit, CNT_LIMIT_SIGN);
+                UpdCN(&sr[ctx3], bit, CNT_LIMIT_SIGN);
+                if (bit) v = -v;
+                ps = (ps << 1) | uint32_t(bit);
+                cstate[k] = ((st & ~3) + (v << 2)) | (bit + 1);
+                r_sbal += v;
+                r_nz++; c_nz[k]++; t_nz++;
+                if (!bit) { r_pos += mag; c_pos[k] += mag; t_pos += mag; }
+                if (mag < 7 && (mag & 1)) { r_off++; c_off[k]++; t_off++; }
+              }
+              row[k] = int8_t(v);
+              rs += mag; cs[k] += mag; T += mag; N++;
+              r_sq += uint64_t(mag) * mag;
+            }
+            n++;
+            tot_sq += r_sq;
+            uint64_t mean_sq = tot_sq / n;
+            if (mean_sq < 1) mean_sq = 1;
+            int rb = (r_sq * 10 < mean_sq * 9) ? 0 : (r_sq < mean_sq ? 1 : (r_sq * 10 < mean_sq * 11 ? 2 : 3));
+            m->last_zrow[r0] = uint8_t(rb << 1);
+          }
+          std::free(cs);
+        } else {
+          CountNode* cw = &m->cint4w[ci * 96];
+          CountNode* sw = &m->sign_int4w[ci * 128];
+          if (cw[0].n0) {
+            cw[0].n0 = 0;
+            if (m->last_int4_ci >= 0) {
+              CopyWarmCN(cw + 1, &m->cint4w[m->last_int4_ci * 96 + 1], 95, 3);
+              for (size_t u = 4; u < 96; u += 8)
+                if (cw[u].n0 < 24) cw[u].n0 = 24;
+              CopyWarmCN(sw, &m->sign_int4w[m->last_int4_ci * 128], 128, 4);
+            }
+          }
+          m->last_int4_ci = int(ci);
+          uint64_t* cs = static_cast<uint64_t*>(std::calloc(cols * 2, sizeof(uint64_t)));
+          int* cstate = reinterpret_cast<int*>(cs + cols);
+          uint64_t n = 0, T = 0, N = 0;
+          for (size_t r0 = 0; r0 < rows; r0++) {
+            int8_t* row = out + r0 * cols;
+            if (dec.decode_cbit(&m->zrow, CNT_LIMIT_ZROW)) {
+              m->last_zrow[r0] = 1;
+              continue;
+            }
+            uint64_t rs = 0;
+            uint32_t ps = 0;
+            for (size_t k = 0; k < cols; k++) {
+              uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
+              if (M < 1) M = 1;
+              uint64_t rr = (rs * 65536 + 16 * M) / (k + 16);
+              uint64_t cc = (cs[k] * 65536 + 40 * M) / (n + 40);
+              uint64_t b = (2 * rr * cc) / (M * 65536);
+              if (b > 11) b = 11;
+              uint32_t mag = dec.decode_ctree(&cw[b * 8], 3, CNT_LIMIT_INT4W);
+              int v = int(mag);
+              if (mag) {
+                int st = cstate[k];
+                uint32_t ctx = (ps & 3u) | (((mag - 1u) >> 1) << 2) | (uint32_t(st & 3) << 4) | (uint32_t(st < 0) << 6);
+                int bit = dec.decode_cbit(&sw[ctx], CNT_LIMIT_SIGN);
+                if (bit) v = -v;
+                ps = (ps << 1) | uint32_t(bit);
+                cstate[k] = ((st & ~3) + (v << 2)) | (bit + 1);
+              }
+              row[k] = int8_t(v);
+              rs += mag; cs[k] += mag; T += mag; N++;
+            }
+            n++;
+          }
+          std::free(cs);
         }
-        std::free(cs);
         break;
       }
       case ENC_BF16C:
       case ENC_F32HC: {
         const bool f32 = encoding == ENC_F32HC;
         uint16_t* s = m->f32hl;
+        uint16_t* s_ci_base = nullptr;
         CountNode* hc = nullptr;
         if (f32) {
           CountNode*& c = m->f32hc[ci];
+          uint16_t*& sc = m->f32hl_ci[ci];
           if (!c) {
             c = static_cast<CountNode*>(std::malloc(5 * 256 * sizeof(CountNode)));
-            if (m->last_f32_ci >= 0)
+            sc = static_cast<uint16_t*>(std::malloc(6 * 257 * 256 * sizeof(uint16_t)));
+            if (m->last_f32_ci >= 0) {
               CopyWarmCN(c, m->f32hc[m->last_f32_ci], 5 * 256, 4);
-            else
+              const uint16_t* ps = m->f32hl_ci[m->last_f32_ci];
+              for (size_t u = 0; u < 6 * 257 * 256; u++) sc[u] = uint16_t((ps[u] + 1024) >> 1);
+            } else {
               FrischCN(c, 5 * 256);
+              Frisch16(sc, 6 * 257 * 256);
+            }
           }
           m->last_f32_ci = int(ci);
           hc = c;
+          s_ci_base = sc;
         } else {
           uint16_t*& b = m->bf16c[ci];
           if (!b) {
-            b = static_cast<uint16_t*>(std::malloc(257 * 256 * sizeof(uint16_t)));
+            b = static_cast<uint16_t*>(std::malloc(5 * 257 * 256 * sizeof(uint16_t)));
             if (m->last_bf16_ci >= 0) {
               const uint16_t* pb = m->bf16c[m->last_bf16_ci];
-              for (size_t u = 0; u < 257 * 256; u++) b[u] = uint16_t((pb[u] + 1024) >> 1);
+              for (size_t u = 0; u < 5 * 257 * 256; u++) b[u] = uint16_t((pb[u] + 1024) >> 1);
             } else {
-              Frisch16(b, 257 * 256);
+              Frisch16(b, 5 * 257 * 256);
             }
           }
           CountNode*& ch = m->bf16c_hi[ci];
@@ -743,19 +890,60 @@ WeightsFile LoadId(Reader& r, const char* path) {
           s = b;
           hc = ch;
         }
+        uint32_t prev_hi = 126;
+        uint32_t prev_col_hi[5] = {126, 126, 126, 126, 126};
         for (size_t k = 0, j = 0; k < numel; k++) {
-          if (!f32 && k < m->last_zrow_n && m->last_zrow[k]) continue;
-          if (f32 && !npkey && rows == m->last_zrow_n && m->last_zrow[k / cols]) continue;
-          uint32_t hi;
-          if (f32) {
-            hi = dec.decode_ctree(hc + (j < 4 ? j : 4) * 256, 8, CNT_LIMIT_F32HC);
-            if (++j == cols) j = 0;
+          if (!f32 && k < m->last_zrow_n && (m->last_zrow[k] & 1)) continue;
+          if (f32 && !npkey && rows == m->last_zrow_n && (m->last_zrow[k / cols] & 1)) continue;
+          uint32_t hi, lo;
+          if (in_A) {
+            size_t jb = f32 ? (j < 4 ? j : 4) : ((k < m->last_zrow_n) ? (m->last_zrow[k] >> 1) : 0);
+            uint32_t phi = (f32 && cols == 4) ? prev_col_hi[jb] : prev_hi;
+            CountNode* hc1 = f32 ? (hc + jb * 256) : hc;
+            CountNode* hc2 = (f32 ? m->f32_hi_prev : m->bf_hi_prev) + phi * 256;
+            uint32_t w_phi = (f32 && cols != 4) ? 3u : 4u;
+            uint32_t lim = f32 ? CNT_LIMIT_F32HC : CNT_LIMIT_BF16C_HI;
+            uint32_t node = 1;
+            for (int bk = 0; bk < 8; bk++) {
+              int bit = dec.decode_p(((16u - w_phi) * ProbCN(&hc1[node]) + w_phi * ProbCN(&hc2[node])) >> 4);
+              UpdCN(&hc1[node], bit, lim);
+              UpdCN(&hc2[node], bit, 511);
+              node = (node << 1) | uint32_t(bit);
+            }
+            hi = node - 256;
+            if (f32) {
+              prev_col_hi[jb] = hi;
+              if (++j == cols) j = 0;
+            }
+            prev_hi = hi;
+            uint16_t* s_ci = (f32 ? s_ci_base : s) + 256 + hi * 256;
+            uint16_t* s_sub = s_ci + (jb + 1) * 257 * 256;
+            int s0 = f32 ? (hi ? 5 : 2) : 4;
+            int s1 = f32 ? (hi ? 8 : 2) : 5;
+            node = 1;
+            for (int bk = 0; bk < 8; bk++) {
+              uint32_t pr = f32 ? ((3u * s_ci[node] + 10u * s_sub[node] + 3u * m->f32hl[256 + hi * 256 + node]) >> 4)
+                                : ((10u * s_ci[node] + 6u * s_sub[node]) >> 4);
+              int bit = dec.decode_p(pr);
+              int sh = node < 4 ? s0 : s1;
+              Upd16(&s_ci[node], bit, sh);
+              Upd16(&s_sub[node], bit, sh);
+              if (f32) Upd16(&m->f32hl[256 + hi * 256 + node], bit, sh);
+              node = (node << 1) | uint32_t(bit);
+            }
+            lo = node - 256;
           } else {
-            hi = dec.decode_ctree(hc, 8, CNT_LIMIT_BF16C_HI);
+            if (f32) {
+              hi = dec.decode_ctree(hc + (j < 4 ? j : 4) * 256, 8, CNT_LIMIT_F32HC);
+              if (++j == cols) j = 0;
+            } else {
+              hi = dec.decode_ctree(hc, 8, CNT_LIMIT_BF16C_HI);
+            }
+            lo = dec.decode_tree(&s[256 + hi * 256], 8,
+                                 f32 ? (hi ? 5 : 2) : 4,
+                                 f32 ? (hi ? 8 : 2) : 5);
           }
-          uint32_t v = (hi << 8) | dec.decode_tree(&s[256 + hi * 256], 8,
-                                                   f32 ? (hi ? 5 : 2) : 4,
-                                                   f32 ? (hi ? 8 : 2) : 5);
+          uint32_t v = (hi << 8) | lo;
           if (f32)
             reinterpret_cast<uint32_t*>(t.data)[k] = v << 16;
           else
@@ -799,6 +987,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
   for (size_t c = 0; c < 65536; c++) std::free(m->cname[c]);
   for (int c = 0; c < kNamenN; c++) {
     std::free(m->bf16c[c]);
+    std::free(m->f32hl_ci[c]);
     std::free(m->bf16c_hi[c]);
     std::free(m->f32hc[c]);
   }
@@ -828,11 +1017,13 @@ WeightsFile WeightsFile::load_compressed(const char* path) {
   std::fclose(f);
   // The fingerprint of the container over the buffer the
   // reader decodes (it was a second read of the file in the engine)
+#if !NEIF_TF1_WC5
   unsigned long long h = 14695981039346656037ULL;
   for (size_t i = 0; i < n; i++) h = (h ^ buf[i]) * 1099511628211ULL;
-  if (h != 0x759e23d8d8cc1236ULL)
+  if (h != 0x844f1f2bf695ec2bULL)
     msg_stop(207)
 ;
+#endif
   Reader r{buf + 8, n - 8, path};   // behind the magic (fixed by the fingerprint)
   WeightsFile wf = LoadId(r, path);
   std::free(buf);
@@ -840,3 +1031,4 @@ WeightsFile WeightsFile::load_compressed(const char* path) {
 }
 
 }  // namespace fx2
+

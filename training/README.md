@@ -16,10 +16,17 @@ decompressor. It serves reproducibility and attribution for `cmix-neif-3.1`
    the checksums at which a rerun can be compared. Section 9 says what can be
    rerun bit-exactly and what cannot.
 2. **Attribution.** In **`cmix-neif-3.1`**, **Oleksandr Dreval**
-   (<https://github.com/OleksandrDreval>) losslessly re-encoded the `.c5`
-   transformer weight container (`tf/3_train/export/np2/tf1_np_codec.cpp`, from
-   `3,744,629 B` to `3,733,125 B`) and rounded slot-1 mantissas + right-shifted
-   the second-half `kBlobW` nibble stream of `BITLSTM` (`../src/bit_head_weights.h`)
+   (<https://github.com/OleksandrDreval>) upgraded the `.c5` probability codec
+   (including per-row `{0, ±2, ±4, ±7}` QAT-grid flag `gbit`) and applied coupled
+   `mlp.up`/`mlp.down` `{0, ±2, ±4, ±7}` QAT snapping with feature-Gram $G_{\text{up}}$
+   coordinate descent, Lehmer `std::memcmp`-order-preserving prefix snapping, and
+   closed-form analytical $\text{ReLU}^2$ cross-covariance compensation (`qat-snap`) to
+   re-encode the `.c5` transformer weight container
+   (`tf/3_train/export/np2/tf1_np_codec.cpp`, from `3,744,629 B` to
+   `3,512,771 B`, `-231,858 B` per copy / `-463,716 B` in `S`) and rounded slot-1
+   mantissas + packed
+   `kBlobW[24669]` via single-byte `(e_code << 4) | s` encoding of `BITLSTM`
+   (`../src/bit_head_weights.h`, `-24,489 B` `.rodata`, `-49.8 %`)
    without retraining. Upstream, the architecture of the transformer and its training recipe
    are Vladimir Malinovskii's `cmix-neif-beehive`, whose weights were the start
    of the training in `cmix-neif-2.0` (Marcus Wölk); its trainer descends from Vladimir Ivanov's
@@ -31,7 +38,7 @@ decompressor. It serves reproducibility and attribution for `cmix-neif-3.1`
 The pipeline is that of `cmix-neif-1.0` (its `training/` directory,
 `https://github.com/marwoelk/cmix-neif-1.0`), with the stream form, the model,
 the training recipe, the container formats and the training of BITLSTM of
-`cmix-neif-2.0` and the lossless `.c5` / slot-1 refinements of `cmix-neif-3.1`.
+`cmix-neif-2.0` and the `.c5` probability/QAT-snap and slot-1 refinements of `cmix-neif-3.1`.
 Section 10 lists the differences.
 
 Everything in this directory is distributed under **GPL-3.0-only** (an
@@ -65,9 +72,9 @@ training package: 488,038,367 tokens, 203,023,960,672 B of priors
 checkpoint (.tch) --> reference weight file (.bin) + manifest (.bin.json)
   |
   v (e) export at window 2048: bf16 rounding, v3, dead neurons, collapsed   tf/3_train/export/
-  |     rows zeroed, v4, v5, NP2 + cmix-neif-3.1 lossless probability/zrow upgrades
-weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5  3,733,125 B, sha256 27e72bc5...
-         (re-encoded losslessly from 3,744,629 B, sha256 729694cb... in 2.0;
+  |     rows zeroed, v4, v5, NP2 + cmix-neif-3.1 probability/zrow/gbit + qat-snap upgrades
+weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5  3,573,643 B, sha256 4081c9ad...
+         (re-encoded from 3,744,629 B, sha256 729694cb... in 2.0;
                                                   appended to both executables)
 
 enwik9 --(f) trace run ("-e", trace build) --> inputs of BITLSTM for every bit it sees
@@ -338,6 +345,7 @@ configurations (`window_size`).
 | zeroing of collapsed attention rows, format v4 | `export4/convert_container_v4.py` | 3,769,904 B, sha256 `38b7c162…` |
 | format v5 (entropy coding of the weights) | `export4/convert_container_v5.py` | 3,767,643 B, sha256 `11ef8fdf…` |
 | format NP2 (order of interchangeable neuron groups coded by their permutation; dead key dimensions of the KDA layers zeroed) | `export/np2/np2_container.py np <v5> <out> k fw np2 dead` | 3,744,629 B, sha256 `729694cba4969b7d833686ed3f597ff04d3b226da849d5f8004ec020a0ed9563` |
+| format NP2 (`cmix-neif-3.1` probability mixing + `gbit` + fast-weight-preserving `qat-snap`) | `export/np2/tf1_np_codec qat-snap <in.c5> <out.c5> 4 6 12` | 3,512,771 B, sha256 `cda620662f617c81ceaba2559ea79db7acd179d12399e451c516fb5a126ff2fe` |
 
 `export4/export.sh` runs the second to fourth step; when no neuron is dead it
 passes the container on unchanged. For this package the steps from the
