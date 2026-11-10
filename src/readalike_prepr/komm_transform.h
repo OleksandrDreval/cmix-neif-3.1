@@ -336,9 +336,22 @@ static void Bericht(const char* page_index) {
   (void)page_index;
 }
 
+static void Freigeben() {
+  for (int i = 0; i < aun; ++i) free(au[i].liste);
+  free(au); au = 0; aun = auc = 0;
+  free(re); re = 0; ren = rec = 0;
+  free(ar); ar = 0; arn = arc = 0;
+  free(ta.h); free(ta.v); ta = {0, 0, 0, 0};
+  free(tr.h); free(tr.v); tr = {0, 0, 0, 0};
+  free(ob); ob = 0; obc = 0;
+  seiten = 0;
+}
+
 template <int enc>
 static DIR_INLINE int ProcessFile(const char* path) {
-  if (!page_file(path, ".komm_tmp", enc ? KodiereCb : DekodiereCb, 1)) return 0;
+  const int ok = page_file(path, ".komm_tmp", enc ? KodiereCb : DekodiereCb, 1);
+  Freigeben();
+  if (!ok) return 0;
   Bericht(enc ? "compress" : "decompress");
   return 1;
 }

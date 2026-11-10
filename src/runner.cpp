@@ -830,6 +830,7 @@ bool RunCompression(bool enable_preprocess, const std::string& input_path,
   p.FreeFxcmRest();
   fclose(temp_in);
   fclose(data_out);
+  if (dictionary) fclose(dictionary);
   remove(temp_path.c_str());
   return true;
 }
@@ -914,6 +915,7 @@ bool RunDecompression(const std::string& input_path,
   *output_bytes = ftell(data_out);
   fclose(temp_in);
   fclose(data_out);
+  if (dictionary) fclose(dictionary);
   remove(temp_path.c_str());
   return true;
 }

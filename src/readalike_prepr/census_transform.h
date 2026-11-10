@@ -1235,7 +1235,11 @@ static ENC_ONLY int cen_enc_cb(const char* p, long n, long* outn, const char** o
 
 template <int enc>
 static DIR_INLINE int census_file(const char* inpath, const char* outpath) {
-  return page_file(inpath, outpath, enc ? cen_enc_cb : cen_dec_cb, 0);
+  const int ok = page_file(inpath, outpath, enc ? cen_enc_cb : cen_dec_cb, 0);
+  free(cen_used); cen_used = 0; cen_usedcap = 0;
+  free(cen_subs); cen_subs = 0; cen_subcap = 0;
+  free(cen_ob);   cen_ob   = 0; cen_obcap = 0;
+  return ok;
 }
 
 // The encoder direction (compression path only), see enc_only.h.

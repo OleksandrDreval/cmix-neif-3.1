@@ -21,8 +21,8 @@
 
 struct Accumulator {
   int id;
-  int start;
-  int end;
+  size_t start;
+  size_t end;
 };
 
 enum ParserState {
@@ -31,95 +31,82 @@ enum ParserState {
   expect_pageend
 };
 
-int line_count = 0;
-static char s[8192*8];
-
 const char *patterns1[] = { "<page>", "<id>", "</page>" };
 const int transitions1[3] = { expect_id, expect_pageend, expect_page };
-// pages of the loaded file: id and line range
+// pages of the loaded file: id and byte range in line_buf
 static Accumulator* vec = nullptr;
 static size_t vec_n = 0, vec_cap = 0;
 static char* line_buf = nullptr;      // text of all lines, back to back
-static uint64_t* line_off = nullptr;  // line i = line_buf[line_off[i] .. line_off[i+1])
-static size_t line_n = 0, line_cap = 0;
+static size_t line_buf_len = 0;
 // in phda9
 int wfgets(char *str, int count, FILE  *fp);
 void wfputs(const char *str,FILE *fp);
 
-// Write lines a..b (inclusive) of the store.
-static void writeLines(int a, int b, FILE* out) {
-  fwrite(line_buf + line_off[a], 1, (size_t)(line_off[b + 1] - line_off[a]), out);
+// Write byte range [a, b) of the store.
+static void writeLines(size_t a, size_t b, FILE* out) {
+  fwrite(line_buf + a, 1, b - a, out);
 }
 
 static void freeLines() {
   free(line_buf); line_buf = nullptr;
-  free(line_off); line_off = nullptr;
-  line_n = line_cap = 0;
+  line_buf_len = 0;
   free(vec); vec = nullptr;
   vec_n = vec_cap = 0;
 }
 
 void loadFile(const char *fname) {
-
-    line_count = 0;
-    int  state = expect_page;
-    Accumulator acc;
-    {
-      FILE* sf = fopen(fname, "rb");   // size without stat (one import less)
-      size_t n = 0; if (sf) { fseek(sf, 0, SEEK_END); n = (size_t)ftell(sf); fclose(sf); }
-      freeLines();
-      line_buf = (char*)malloc(n + 1);  // the text never outgrows the file
-      line_cap = n / 40 + 2;            // enwik9 averages ~75 B per line
-      line_off = (uint64_t*)malloc(line_cap * sizeof(uint64_t));
-      if (!line_buf || !line_off) exit(1);
-      line_off[0] = 0;
-    }
-    FILE* file = fopen(fname, "rb");
-    while (wfgets(s, 8192*8, file) )  {
-    char *p = strstr(s, patterns1[state]);
+  int state = expect_page;
+  Accumulator acc = {0, 0, 0};
+  FILE* sf = fopen(fname, "rb");   // size without stat (one import less)
+  size_t n = 0;
+  if (sf) {
+    fseek(sf, 0, SEEK_END);
+    n = (size_t)ftell(sf);
+    fseek(sf, 0, SEEK_SET);
+  }
+  freeLines();
+  line_buf = (char*)malloc(n + 1);  // the text never outgrows the file
+  if (!line_buf) exit(1);
+  if (sf) {
+    if (n) n = fread(line_buf, 1, n, sf);
+    fclose(sf);
+  }
+  line_buf[n] = 0;
+  line_buf_len = n;
+  static const uint8_t kPatLen[3] = {6, 4, 7};
+  for (size_t pos = 0; pos < n; ) {
+    size_t max_len = n - pos;
+    if (max_len > 8192 * 8 - 1) max_len = 8192 * 8 - 1;
+    const char* nl = (const char*)memchr(line_buf + pos, '\n', max_len);
+    size_t slen = nl ? (size_t)(nl - (line_buf + pos)) + 1 : max_len;
+    const char* p = (const char*)memmem(line_buf + pos, slen, patterns1[state], kPatLen[state]);
     if (p) {
-      if (state==expect_page){
-           acc.start = line_count;
-      }else if(state==expect_id){
-           char *p = strstr(s, patterns1[1]); //id
-           if (p){
-               p=p+4;
-               acc.id = atoi(p);
-           }
-      }else if(state==expect_pageend){
-           acc.end = line_count;
+      if (state == expect_page) {
+        acc.start = pos;
+      } else if (state == expect_id) {
+        acc.id = atoi(p + 4);
+      } else if (state == expect_pageend) {
+        acc.end = pos + slen;
       }
       state = transitions1[state];
-      if (state == expect_page){
+      if (state == expect_page) {
         if (vec_n == vec_cap) {
           vec_cap = vec_cap * 2 + 262144;
           vec = (Accumulator*)realloc(vec, vec_cap * sizeof(Accumulator));
           if (!vec) exit(1);
         }
         vec[vec_n++] = acc;
-       }
-    }
-    line_count++;
-    {
-      const size_t len = strlen(s), o = line_off[line_n];
-      memcpy(line_buf + o, s, len);
-      if (++line_n == line_cap) {
-        line_cap *= 2;
-        line_off = (uint64_t*)realloc(line_off, line_cap * sizeof(uint64_t));
-        if (!line_off) exit(1);
       }
-      line_off[line_n] = o + len;
     }
+    pos += slen;
   }
-  fclose(file);
-
 }
 // The store holds .main up to its first NUL, and .main has none: the lines
 // read below are those of the file.
 void reorder() {
     loadFile(".main");
     const char* const txt = line_buf;
-    const char* const txt_end = line_buf + line_off[line_n];
+    const char* const txt_end = line_buf + line_buf_len;
 
     // Article numbers need to be remapped (see article_remap.cpp): at every
     // page line the number of non-redirect pages before the previous page is

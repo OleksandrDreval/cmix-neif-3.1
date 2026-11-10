@@ -389,83 +389,6 @@ void restoreamp( char *in,char *out,int skip ){
 
 #include "census_transform.h"
 
-static long long revts_key[300000];   // time keys, ascending
-static long long revts_val[300000];   // matching rev_id
-static int       revts_n = 0;
-
-// time key from "<yy><mt>:<sek>" (phda9 timestamp encoding)
-static long long revts_from_timestamp(const char *p) {
-  long long yy = (p[0] - '0') * 10 + (p[1] - '0');
-  const char *q = p + 2;
-  long long mt = 0;
-  while (*q >= '0' && *q <= '9') mt = mt * 10 + (*q++ - '0');
-  if (*q == ':') ++q;
-  long long sec = 0;
-  while (*q >= '0' && *q <= '9') sec = sec * 10 + (*q++ - '0');
-  return (yy * 366 + mt) * 86400 + sec;
-}
-
-static long long revts_predict(long long k) {
-  if (revts_n < 2) return 0;
-  int lo = 0, hi = revts_n;                    // lower_bound
-  while (lo < hi) { int m = (lo + hi) >> 1; if (revts_key[m] < k) lo = m + 1; else hi = m; }
-  int a = lo - 1, b = lo;
-  if (a < 0) a = 0; if (a > revts_n - 1) a = revts_n - 1;
-  if (b < 0) b = 0; if (b > revts_n - 1) b = revts_n - 1;
-  if (revts_key[b] == revts_key[a]) return revts_val[a];
-  return revts_val[a] + (long long)(((__int128)(k - revts_key[a]) *
-         (__int128)(revts_val[b] - revts_val[a])) /
-         (__int128)(revts_key[b] - revts_key[a]));
-}
-
-static void revts_add(long long k, long long v) {
-  if (revts_n >= 300000) return;          // budget: same on both sides
-  int lo = 0, hi = revts_n;                    // upper_bound (= insort_right)
-  while (lo < hi) { int m = (lo + hi) >> 1; if (revts_key[m] <= k) lo = m + 1; else hi = m; }
-  memmove(revts_key + lo + 1, revts_key + lo, (size_t)(revts_n - lo) * sizeof(long long));
-  memmove(revts_val + lo + 1, revts_val + lo, (size_t)(revts_n - lo) * sizeof(long long));
-  revts_key[lo] = k; revts_val[lo] = v; ++revts_n;
-}
-
-static long long zigzag(long long x)   { return x >= 0 ? 2 * x : -2 * x - 1; }
-static long long unzigzag(long long u) { return (u & 1) ? -((u + 1) / 2) : u / 2; }
-
-// enc=1: rev_id -> zigzag(rev_id - pred);  enc=0: back again.
-// out must hold 2*n+4096 bytes. Returns: length of the output.
-[[maybe_unused]] static size_t revid_apply(const char *in, size_t n, char *out, int enc) {
-  revts_n = 0;
-  size_t i = 0, o = 0;
-  while (i < n) {
-    const char *nl = (const char*)memchr(in + i, '\n', n - i);
-    size_t len = nl ? (size_t)(nl - (in + i)) + 1 : n - i;
-    if (len == 10 && memcmp(in + i, "revision>\n", 10) == 0) {
-      size_t i2 = i + len;
-      const char *nl2 = i2 < n ? (const char*)memchr(in + i2, '\n', n - i2) : 0;
-      size_t len2 = nl2 ? (size_t)(nl2 - (in + i2)) + 1 : 0;
-      size_t i3 = i2 + len2;
-      const char *nl3 = i3 < n ? (const char*)memchr(in + i3, '\n', n - i3) : 0;
-      size_t len3 = nl3 ? (size_t)(nl3 - (in + i3)) + 1 : 0;
-      if (len2 > 4 && memcmp(in + i2, "id>", 3) == 0 &&
-          len3 > 11 && memcmp(in + i3, "timestamp>", 10) == 0) {
-        long long k = revts_from_timestamp(in + i3 + 10);
-        long long pred = revts_predict(k);
-        long long val = 0;
-        for (size_t t = 3; t + 1 < len2; ++t) val = val * 10 + (in[i2 + t] - '0');
-        long long rev, wr;
-        if (enc) { rev = val;                   wr = zigzag(rev - pred); }
-        else     { rev = unzigzag(val) + pred; wr = rev; }
-        memcpy(out + o, in + i, len); o += len;             // "revision>"
-        o += (size_t)sprintf(out + o, "id>%lld\n", wr);
-        revts_add(k, rev);
-        i = i3;                                            // copy timestamp normally
-        continue;
-      }
-    }
-    memcpy(out + o, in + i, len); o += len;
-    i += len;
-  }
-  return o;
-}
 
 static unsigned long long name_index_hash(const char *p, int len) {
   unsigned long long h = 1469598103934665603ULL;
@@ -738,6 +661,7 @@ void decode_txt_wit(FILE*in,  FILE*out1,U64 size){
 
     }
     while (g1_dec_offen() || curpos(in) < tsize);
+    g1_free();
     free(h1);
 }
 

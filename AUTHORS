@@ -52,12 +52,13 @@ SPDX-License-Identifier: GPL-3.0-only
        QAT bimodal sparsity priors in `FrischInt4`, cross-tensor warm-start priors
        `CopyWarmCN`, Bayesian column pseudocount `pr_c = 40`, two-stage `bfloat16`
        lo-byte adaptation shifts, `last_zrow` skipping of zero scales and dead KDA
-       `key_convolution.weight` rows, and coupled `mlp.up`/`mlp.down` `{0, ±2, ±4, ±7}`
-       QAT snapping `qat-snap` with feature-Gram $G_{\text{up}}$ coordinate descent,
-       Lehmer `std::memcmp`-order-preserving prefix snapping, and closed-form
-       analytical $\text{ReLU}^2$ cross-covariance compensation) and re-encoded
-       `3,573,643 B` container `weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5`
-       (`src/tf1/`, `src/transformer.h`,
+       `key_convolution.weight` rows, and coupled `mlp.up`/`mlp.down`, KDA gate
+       (`forget_gate_projection`, `output_gate_projection`), and cross-head
+       `output_projection` `{0, ±2, ±4, ±7}` QAT snapping `qat-snap` with
+       feature-Gram $G_{\text{up}}$ coordinate descent, Lehmer re-permutation, and
+       closed-form analytical $\text{ReLU}^2$/linear cross-covariance compensation)
+       and re-encoded `3,352,617 B` container
+       `weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5` (`src/tf1/`, `src/transformer.h`,
        `training/tf/3_train/export/np2/tf1_np_codec.cpp`).
     3. `BITLSTM` slot-1 3-bit mantissa rounding, single-byte `(e_code << 4) | s`
        `kBlobW[24669]` packing (`-24,489 B` `.rodata`, `-49.8 %`) with 90-byte
@@ -74,17 +75,19 @@ SPDX-License-Identifier: GPL-3.0-only
        pre-accounting, demand-paged `memfd`), single-mapping demand-paged
        `SEMCACHE` (`MAP_NORESERVE` + `FreeFxcmRest` `munmap` with exact
        `kNLog = 24, kB = 18` SimHash geometry), `word_label` 69 MiB leak fix in
-       `FreeFxcmRest()` and `PAGE_REGISTRY_ADD` dangling-pointer removal, and
-       4 KiB demand-paged `arena` / `HugeBuf` allocators, plus 4-row AVX2
-       unrolling in `SemDotPm1` (`src/models/ppmd*.{h,cpp}`,
-       `src/semantic_cache.h`, `src/predictor.cpp`, `src/word_label.cpp`,
-       `src/runner.cpp`, `src/arena_alloc.h`, `src/tf1/opt/arena_build.cpp`).
+       `FreeFxcmRest()` and `PAGE_REGISTRY_ADD` dangling-pointer removal,
+       decompressor/postprocessor memory-safety & `~54–64 MiB` heap-leak fixes
+       (`komm_transform.h`, `page_form.h`, `phda9_preprocess.h`,
+       `cmtidx_transform.h`, `census_transform.h`, `preprocessor.cpp`,
+       `runner.cpp`, `article_reorder.h`), and 4 KiB demand-paged `arena` /
+       `HugeBuf` allocators, plus 4-row AVX2 unrolling in `SemDotPm1`
+       (`src/models/ppmd*.{h,cpp}`, `src/semantic_cache.h`, `src/predictor.cpp`,
+       `src/word_label.cpp`, `src/runner.cpp`, `src/arena_alloc.h`,
+       `src/tf1/opt/arena_build.cpp`).
     5. Compiler warning cleanups and PGO diagnostic flags across `src/` and
        `makefile`, plus analytical/benchmark documentation
-       (`en-optimization_report_it_1.md`, `en-optimization_report_it_2.md`,
-       `en-optimization_report_it_3.md`, `en-optimization_report_it_4.md`,
-       `uk-optimization_report_it_1.md`, `uk-optimization_report_it_2.md`,
-       `uk-optimization_report_it_3.md`, `uk-optimization_report_it_4.md`,
+       (`en-optimization_report_it_1.md`..`en-optimization_report_it_5.md`,
+       `uk-optimization_report_it_1.md`..`uk-optimization_report_it_5.md`,
        `CHANGES.md`, `NOTICE.md`, `README.md`, `training/`).
 
 No copyright claim is made by Oleksandr Dreval over inherited upstream code;

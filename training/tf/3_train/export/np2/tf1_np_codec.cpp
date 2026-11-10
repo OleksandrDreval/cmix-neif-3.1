@@ -160,6 +160,31 @@ struct Ent {
 
 // the tensors of a container, decoded by the reader of this tree, in file order
 std::vector<Ent> load_ents(const char* path) {
+  FILE* fp = std::fopen(path, "rb");
+  if (!fp) die("cannot open %s", path);
+  char magic[8];
+  if (std::fread(magic, 1, 8, fp) != 8) die("short read %s", path);
+  if (!std::memcmp(magic, "FX2TFW01", 8)) {
+    uint32_t n = 0;
+    if (std::fread(&n, 4, 1, fp) != 1) die("short read %s", path);
+    std::vector<Ent> out(n);
+    for (uint32_t i = 0; i < n; i++) {
+      uint32_t nl = 0, nd = 0;
+      if (std::fread(&nl, 4, 1, fp) != 1) die("short read %s", path);
+      out[i].name.resize(nl);
+      if (std::fread(&out[i].name[0], 1, nl, fp) != nl) die("short read %s", path);
+      if (std::fread(&out[i].dt, 1, 1, fp) != 1) die("short read %s", path);
+      if (std::fread(&nd, 4, 1, fp) != 1) die("short read %s", path);
+      out[i].shape.resize(nd);
+      if (std::fread(out[i].shape.data(), 4, nd, fp) != nd) die("short read %s", path);
+      size_t nb = out[i].numel() * dtype_size(out[i].dt);
+      out[i].data.resize(nb);
+      if (std::fread(out[i].data.data(), 1, nb, fp) != nb) die("short read %s", path);
+    }
+    std::fclose(fp);
+    return out;
+  }
+  std::fclose(fp);
   WeightsFile wf = WeightsFile::load_compressed(path);
   std::vector<Ent> out;
   auto push_ci = [&](int ci, int blk) {
@@ -371,7 +396,7 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
       static const uint8_t kU3[3] = {0, 7, 14};
       static constexpr uint8_t kW2d[8] = {0, 4, 4, 3, 1, 2, 2, 3};
       static constexpr uint8_t kW3d[8] = {0, 2, 2, 2, 0, 1, 1, 2};
-      static constexpr uint8_t kWrc[8] = {0, 3, 3, 3, 7, 6, 6, 3};
+      static constexpr uint8_t kWrc[8] = {0, 5, 5, 5, 7, 6, 6, 3};
       static constexpr uint8_t kWgr[8] = {0, 0, 0, 0, 6, 5, 5, 0};
       size_t R = e.rows(), C = e.cols();
       if (enc == ENC_INT4W) vm.last_zrow.assign(R, 0);
@@ -483,7 +508,7 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
             uint32_t ur_mag = (r > 0 && k + 1 < C) ? uint32_t(std::abs(int(row[k - C + 1]))) : 0;
             uint32_t pm_bin = prev_mag == 0 ? 0 : (prev_mag <= 2 ? 1 : (prev_mag <= 4 ? 2 : 3));
             uint32_t um_bin = up_mag == 0 ? 0 : (up_mag <= 2 ? 1 : (up_mag <= 4 ? 2 : 3));
-            uint32_t ctx2d_base = ((pm_bin << 2) | um_bin) * 2 + (k & 1);
+            uint32_t ctx2d_base = ((pm_bin << 2) | um_bin) * 2 + uint32_t(gbit);
             uint32_t ctx3d_base = (pm_bin << 3) | ((prev2_mag > 0 ? 1u : 0u) << 2) |
                                   (((dg_mag + ur_mag) > 0 ? 1u : 0u) << 1) | (up_mag > 0 ? 1u : 0u);
             uint32_t node = 1;
@@ -557,7 +582,7 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
               uint64_t ps_c = (uint64_t(c_pos[k]) * 2048ull + 320ull * ps_t) / (cs[k] + 320ull);
               uint64_t p_src = (ps_r * ps_c) / ps_t;
               if (p_src > 2047) p_src = 2047;
-              uint32_t psign = (14u * p1 + 6u * p2 + 4u * p3 + 8u * uint32_t(p_src)) >> 5;
+              uint32_t psign = (13u * p1 + 6u * p2 + 4u * p3 + 9u * uint32_t(p_src)) >> 5;
               E.encode_p(psign, bit);
               UpdCN(&sw[ctx], bit, CNT_LIMIT_SIGN);
               UpdCN(&s2[ctx2], bit, CNT_LIMIT_SIGN);
@@ -1452,16 +1477,17 @@ int main(int argc, char** argv) {
                 argv[3], p.size(), es.size());
     return 0;
   }
-  if (mode == "qat-snap" && (argc >= 4 && argc <= 7)) {
+  if (mode == "qat-snap" && (argc >= 4 && argc <= 10)) {
     const char* in = argv[2];
     const char* out_path = argv[3];
-    int min_blk = (argc >= 5) ? std::atoi(argv[4]) : 4;
-    int up_min_blk = (argc >= 6) ? std::atoi(argv[5]) : 6;
-    int up_max_blk = (argc >= 7) ? std::atoi(argv[6]) : 12;
+    int min_blk = (argc >= 5) ? std::atoi(argv[4]) : 0;
+    int up_min_blk = (argc >= 6) ? std::atoi(argv[5]) : 0;
+    int up_max_blk = (argc >= 7) ? std::atoi(argv[6]) : 16;
     std::vector<uint8_t> raw_in = slurp(in);
     if (raw_in.size() < 24) die("%s: too small", in);
     uint32_t orig_K = 0;
-    std::memcpy(&orig_K, &raw_in[20], 4);
+    if (!std::memcmp(raw_in.data(), "FX2TFW01", 8)) orig_K = 20277;
+    else std::memcpy(&orig_K, &raw_in[20], 4);
     std::vector<Ent> es = load_ents(in);
     std::vector<Group> gs = np_groups(es, true, true);
     std::vector<uint8_t> keyflag(es.size(), 0);
@@ -1525,7 +1551,7 @@ int main(int argc, char** argv) {
         const int8_t* urow = reinterpret_cast<const int8_t*>(&es[i_up_q].data[j * D]);
         double sq = 0.0;
         for (size_t d = 0; d < D; d++) sq += double(urow[d]) * urow[d];
-        a_orig[j] = sq * bf16_val(up_sc[j]);
+        double sc = bf16_val(up_sc[j]); a_orig[j] = sq * sc * sc;
         double inv = (sq > 0.0) ? (1.0 / std::sqrt(sq)) : 0.0;
         for (size_t d = 0; d < D; d++) u_orig[j * D + d] = urow[d] * inv;
       }
@@ -1551,9 +1577,16 @@ int main(int argc, char** argv) {
         double inv_trG = (trG > 0.0) ? (double(D) / trG) : 1.0;
         for (size_t d1 = 0; d1 < D; d1++) {
           for (size_t d2 = d1; d2 < D; d2++) {
-            double v = G_up[d1 * D + d2] * inv_trG + ((d1 == d2) ? 0.5 : 0.0);
+            double v = G_up[d1 * D + d2] * inv_trG + ((d1 == d2) ? 1.5 : 0.0);
             G_up[d1 * D + d2] = G_up[d2 * D + d1] = v;
           }
+        }
+        std::vector<uint32_t> mlp_digs(N_neur, 0);
+        for (size_t k = 0; k < N_neur; k++) {
+          uint32_t c = 0;
+          for (size_t j = k + 1; j < N_neur; j++)
+            c += std::memcmp(&es[i_up_q].data[j * D], &es[i_up_q].data[k * D], D) < 0;
+          mlp_digs[k] = c;
         }
         std::vector<int> up_idx(N_neur), up_pos(N_neur);
         for (size_t j = 0; j < N_neur; j++) up_idx[j] = int(j);
@@ -1562,8 +1595,13 @@ int main(int argc, char** argv) {
         });
         for (size_t m = 0; m < N_neur; m++) up_pos[up_idx[m]] = int(m);
         auto order_ok = [&](size_t j) {
-          int m = up_pos[j];
           const uint8_t* cur = &es[i_up_q].data[j * D];
+          if (blk < 12) {
+            for (size_t o = 0; o < N_neur; o++)
+              if (o != j && std::memcmp(&es[i_up_q].data[o * D], cur, D) == 0) return false;
+            return true;
+          }
+          int m = up_pos[j];
           if (m > 0) {
             const uint8_t* prv = &es[i_up_q].data[size_t(up_idx[m - 1]) * D];
             if (std::memcmp(prv, cur, D) >= 0) return false;
@@ -1580,13 +1618,18 @@ int main(int argc, char** argv) {
           double sq_orig = 0.0;
           for (size_t d = 0; d < D; d++) { orig_u[d] = urow[d]; sq_orig += double(urow[d]) * urow[d]; }
           if (sq_orig <= 0.0) continue;
-          double w_sq = 2.0 / sq_orig;
+          double w_sq = 10.0 / sq_orig, w_dot = 4.0 / sq_orig, w_sum = 1.0 / double(D);
           std::vector<double> g(D, 0.0);
-          double dsq = 0.0;
+          double dsq = 0.0, ddot = 0.0, dsum = 0.0;
           auto eval_cost = [&](size_t c, int v_cur, int v_new) {
             double dv = v_new - v_cur;
             double d_sq_new = dsq + (double(v_new) * v_new - double(v_cur) * v_cur);
-            return 2.0 * dv * g[c] + dv * dv * G_up[c * D + c] + w_sq * (d_sq_new * d_sq_new - dsq * dsq);
+            double d_dot_new = ddot + dv * orig_u[c];
+            double d_sum_new = dsum + dv;
+            return 2.0 * dv * g[c] + dv * dv * G_up[c * D + c]
+                 + w_sq * (d_sq_new * d_sq_new - dsq * dsq)
+                 + w_dot * (d_dot_new * d_dot_new - ddot * ddot)
+                 + w_sum * (d_sum_new * d_sum_new - dsum * dsum);
           };
           auto snap_u = [&](size_t c, int vn_lo, int vn_hi) {
             int v = urow[c];
@@ -1603,6 +1646,8 @@ int main(int argc, char** argv) {
             }
             double dv = vn - v;
             dsq += double(vn) * vn - double(v) * v;
+            ddot += dv * orig_u[c];
+            dsum += dv;
             urow[c] = int8_t(vn);
             const double* mc = &G_up[c * D];
             for (size_t d = 0; d < D; d++) g[d] += dv * mc[d];
@@ -1635,6 +1680,8 @@ int main(int argc, char** argv) {
                 if (order_ok(j)) {
                   double d_alt = v_alt - v_cur;
                   dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                  ddot += d_alt * orig_u[c];
+                  dsum += d_alt;
                   const double* mc = &G_up[c * D];
                   for (size_t d = 0; d < D; d++) g[d] += d_alt * mc[d];
                 } else {
@@ -1651,6 +1698,8 @@ int main(int argc, char** argv) {
                 if (order_ok(j)) {
                   double d_alt = v_alt - v_cur;
                   dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                  ddot += d_alt * orig_u[c];
+                  dsum += d_alt;
                   const double* mc = &G_up[c * D];
                   for (size_t d = 0; d < D; d++) g[d] += d_alt * mc[d];
                 } else {
@@ -1660,6 +1709,31 @@ int main(int argc, char** argv) {
             }
           }
         }
+        if (blk < 12) {
+          std::vector<int> idx(N_neur);
+          for (size_t j = 0; j < N_neur; j++) idx[j] = int(j);
+          std::sort(idx.begin(), idx.end(), [&](int x, int y) {
+            return std::memcmp(&es[i_up_q].data[size_t(x) * D], &es[i_up_q].data[size_t(y) * D], D) < 0;
+          });
+          std::vector<int> perm(N_neur);
+          for (size_t j = 0; j < N_neur; j++) {
+            uint32_t d = mlp_digs[j];
+            perm[j] = idx[d];
+            idx.erase(idx.begin() + d);
+          }
+          for (const auto& G : gs) {
+            if (G.key == i_up_q) {
+              apply_perm(es, G, perm);
+              break;
+            }
+          }
+          std::vector<double> old_a = a_orig, old_u = u_orig;
+          for (size_t j = 0; j < N_neur; j++) {
+            a_orig[j] = old_a[perm[j]];
+            std::memcpy(&u_orig[j * D], &old_u[size_t(perm[j]) * D], D * sizeof(double));
+          }
+          up_sc = reinterpret_cast<const uint16_t*>(es[i_up_s].data.data());
+        }
       }
 
       std::vector<double> a_neur(N_neur, 0.0);
@@ -1668,7 +1742,7 @@ int main(int argc, char** argv) {
         const int8_t* urow = reinterpret_cast<const int8_t*>(&es[i_up_q].data[j * D]);
         double sq = 0.0;
         for (size_t d = 0; d < D; d++) sq += double(urow[d]) * urow[d];
-        a_neur[j] = sq * bf16_val(up_sc[j]);
+        double sc = bf16_val(up_sc[j]); a_neur[j] = sq * sc * sc;
         double inv = (sq > 0.0) ? (1.0 / std::sqrt(sq)) : 0.0;
         for (size_t d = 0; d < D; d++) u_norm[j * D + d] = urow[d] * inv;
       }
@@ -1683,7 +1757,7 @@ int main(int argc, char** argv) {
           for (size_t d = 0; d < D; d++) rho += ui[d] * uj[d];
           rho = std::max(-1.0, std::min(1.0, rho));
           double th = std::acos(rho);
-          double f_rho = ((1.0 + 2.0 * rho * rho) * (kPi - th) + 3.0 * rho * std::sin(th)) / (4.0 * kPi);
+          double f_rho = ((1.0 + 2.0 * rho * rho) * (kPi - th) + 3.0 * rho * std::sin(th)) / (8.0 * kPi);
           double c_ij = a_neur[i] * a_neur[j] * f_rho;
           cov[i * N_neur + j] = cov[j * N_neur + i] = c_ij;
         }
@@ -1694,7 +1768,7 @@ int main(int argc, char** argv) {
             for (size_t d = 0; d < D; d++) rho += ui[d] * uj_orig[d];
             rho = std::max(-1.0, std::min(1.0, rho));
             double th = std::acos(rho);
-            double f_rho = ((1.0 + 2.0 * rho * rho) * (kPi - th) + 3.0 * rho * std::sin(th)) / (4.0 * kPi);
+            double f_rho = ((1.0 + 2.0 * rho * rho) * (kPi - th) + 3.0 * rho * std::sin(th)) / (8.0 * kPi);
             cov_cross[i * N_neur + j] = a_neur[i] * a_orig[j] * f_rho;
           }
         }
@@ -1767,6 +1841,621 @@ int main(int argc, char** argv) {
         }
       }
     }
+
+    // Coupled linear-bottleneck QAT snapping for KDA gate projections
+    for (int blk = min_blk; blk < 16; blk++) {
+      if (blk % 4 == 3) continue; // window attention layer has no gates
+      for (const char* gname : {"forget_gate_projection", "output_gate_projection"}) {
+        std::string pref = "blocks." + std::to_string(blk) + ".attention." + gname;
+        int i_up_q = -1, i_up_s = -1, i_dn_q = -1, i_dn_s = -1;
+        for (size_t i = 0; i <= last; i++) {
+          if (es[i].name == pref + ".up.weight.q") i_up_q = int(i);
+          if (es[i].name == pref + ".up.weight.scale") i_up_s = int(i);
+          if (es[i].name == pref + ".down.weight.q") i_dn_q = int(i);
+          if (es[i].name == pref + ".down.weight.scale") i_dn_s = int(i);
+        }
+        if (i_up_q < 0 || i_up_s < 0 || i_dn_q < 0 || i_dn_s < 0) continue;
+        const size_t N_bot = es[i_up_q].rows(), D = es[i_up_q].cols();
+        const uint16_t* up_sc = reinterpret_cast<const uint16_t*>(es[i_up_s].data.data());
+        const uint16_t* dn_sc = reinterpret_cast<const uint16_t*>(es[i_dn_s].data.data());
+        std::vector<uint32_t> bot_digs(N_bot, 0);
+        for (size_t k = 0; k < N_bot; k++) {
+          uint32_t c = 0;
+          for (size_t j = k + 1; j < N_bot; j++)
+            c += std::memcmp(&es[i_up_q].data[j * D], &es[i_up_q].data[k * D], D) < 0;
+          bot_digs[k] = c;
+        }
+        std::vector<double> u_orig(N_bot * D, 0.0);
+        for (size_t j = 0; j < N_bot; j++) {
+          double sc = bf16_val(up_sc[j]);
+          const int8_t* urow = reinterpret_cast<const int8_t*>(&es[i_up_q].data[j * D]);
+          for (size_t d = 0; d < D; d++) u_orig[j * D + d] = sc * urow[d];
+        }
+        std::vector<double> col_imp(N_bot, 0.0);
+        for (size_t r = 0; r < D; r++) {
+          double rsc = bf16_val(dn_sc[r]);
+          const int8_t* drow = reinterpret_cast<const int8_t*>(&es[i_dn_q].data[r * N_bot]);
+          for (size_t j = 0; j < N_bot; j++) {
+            double v = rsc * drow[j];
+            col_imp[j] += v * v;
+          }
+        }
+        std::vector<double> G_up(D * D, 0.0);
+        for (size_t j = 0; j < N_bot; j++) {
+          double wj = col_imp[j] + 1e-6;
+          const double* uj = &u_orig[j * D];
+          for (size_t d1 = 0; d1 < D; d1++)
+            for (size_t d2 = d1; d2 < D; d2++)
+              G_up[d1 * D + d2] += wj * uj[d1] * uj[d2];
+        }
+        double trG = 0.0;
+        for (size_t d = 0; d < D; d++) trG += G_up[d * D + d];
+        double inv_trG = (trG > 0.0) ? (double(D) / trG) : 1.0;
+        for (size_t d1 = 0; d1 < D; d1++) {
+          for (size_t d2 = d1; d2 < D; d2++) {
+            double v = G_up[d1 * D + d2] * inv_trG + ((d1 == d2) ? 2.5 : 0.0);
+            G_up[d1 * D + d2] = G_up[d2 * D + d1] = v;
+          }
+        }
+        auto order_ok = [&](size_t j) {
+          const uint8_t* cur = &es[i_up_q].data[j * D];
+          for (size_t o = 0; o < N_bot; o++)
+            if (o != j && std::memcmp(&es[i_up_q].data[o * D], cur, D) == 0) return false;
+          return true;
+        };
+        for (size_t j = 0; j < N_bot; j++) {
+          int8_t* urow = reinterpret_cast<int8_t*>(&es[i_up_q].data[j * D]);
+          std::vector<int> orig_u(D);
+          double sq_orig = 0.0;
+          for (size_t d = 0; d < D; d++) { orig_u[d] = urow[d]; sq_orig += double(urow[d]) * urow[d]; }
+          if (sq_orig <= 0.0) continue;
+          double w_sq = 8.0 / sq_orig, w_dot = 8.0 / sq_orig, w_sum = 2.0 / double(D);
+          double dsq = 0.0, ddot = 0.0, dsum = 0.0;
+          auto eval_cost = [&](size_t c, int v_cur, int v_new) {
+            double dv = v_new - v_cur;
+            double e_cur = v_cur - orig_u[c], e_new = v_new - orig_u[c];
+            double d_sq_new = dsq + (double(v_new) * v_new - double(v_cur) * v_cur);
+            double d_dot_new = ddot + dv * orig_u[c];
+            double d_sum_new = dsum + dv;
+            return (e_new * e_new - e_cur * e_cur)
+                 + w_sq * (d_sq_new * d_sq_new - dsq * dsq)
+                 + w_dot * (d_dot_new * d_dot_new - ddot * ddot)
+                 + w_sum * (d_sum_new * d_sum_new - dsum * dsum);
+          };
+          auto snap_u = [&](size_t c, int vn_lo, int vn_hi) {
+            int v = urow[c];
+            int vn1 = (eval_cost(c, v, vn_hi) <= eval_cost(c, v, vn_lo)) ? vn_hi : vn_lo;
+            int vn2 = (vn1 == vn_hi) ? vn_lo : vn_hi;
+            int vn = v;
+            urow[c] = int8_t(vn1);
+            if (order_ok(j)) vn = vn1;
+            else {
+              urow[c] = int8_t(vn2);
+              if (order_ok(j)) vn = vn2;
+              else urow[c] = int8_t(v);
+            }
+            double dv = vn - v;
+            dsq += double(vn) * vn - double(v) * v;
+            ddot += dv * orig_u[c];
+            dsum += dv;
+            urow[c] = int8_t(vn);
+          };
+          std::vector<size_t> c1, c35;
+          for (size_t c = 0; c < D; c++) {
+            int a = std::abs(int(urow[c]));
+            if (a == 1) c1.push_back(c);
+            else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+          }
+          for (size_t c : c1) snap_u(c, 0, 2 * ((urow[c] > 0) ? 1 : -1));
+          for (size_t c : c35) {
+            int s_u = (urow[c] > 0) ? 1 : -1, a = std::abs(int(urow[c]));
+            int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+            snap_u(c, s_u * lo, s_u * hi);
+          }
+          for (int pass = 0; pass < 4; pass++) {
+            for (size_t c : c1) {
+              int s_u = (orig_u[c] > 0) ? 1 : -1, v_cur = urow[c], v_alt = (v_cur == 0) ? (2 * s_u) : 0;
+              if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+                urow[c] = int8_t(v_alt);
+                if (order_ok(j)) {
+                  double d_alt = v_alt - v_cur;
+                  dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                  ddot += d_alt * orig_u[c];
+                  dsum += d_alt;
+                } else urow[c] = int8_t(v_cur);
+              }
+            }
+            for (size_t c : c35) {
+              int s_u = (orig_u[c] > 0) ? 1 : -1, a = std::abs(orig_u[c]), v_cur = urow[c];
+              int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+              int v_alt = (v_cur == s_u * lo) ? (s_u * hi) : (s_u * lo);
+              if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+                urow[c] = int8_t(v_alt);
+                if (order_ok(j)) {
+                  double d_alt = v_alt - v_cur;
+                  dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                  ddot += d_alt * orig_u[c];
+                  dsum += d_alt;
+                } else urow[c] = int8_t(v_cur);
+              }
+            }
+          }
+        }
+        std::vector<int> idx(N_bot);
+        for (size_t j = 0; j < N_bot; j++) idx[j] = int(j);
+        std::sort(idx.begin(), idx.end(), [&](int x, int y) {
+          return std::memcmp(&es[i_up_q].data[size_t(x) * D], &es[i_up_q].data[size_t(y) * D], D) < 0;
+        });
+        std::vector<int> perm(N_bot);
+        for (size_t j = 0; j < N_bot; j++) {
+          uint32_t d = bot_digs[j];
+          perm[j] = idx[d];
+          idx.erase(idx.begin() + d);
+        }
+        for (const auto& G : gs) {
+          if (G.key == i_up_q) {
+            apply_perm(es, G, perm);
+            break;
+          }
+        }
+        std::vector<double> old_u = u_orig;
+        for (size_t j = 0; j < N_bot; j++)
+          std::memcpy(&u_orig[j * D], &old_u[size_t(perm[j]) * D], D * sizeof(double));
+        up_sc = reinterpret_cast<const uint16_t*>(es[i_up_s].data.data());
+        std::vector<double> u_new(N_bot * D, 0.0), bot_imp(N_bot, 0.0), bot_orig_imp(N_bot, 0.0);
+        for (size_t j = 0; j < N_bot; j++) {
+          double sc = bf16_val(up_sc[j]);
+          const int8_t* urow = reinterpret_cast<const int8_t*>(&es[i_up_q].data[j * D]);
+          for (size_t d = 0; d < D; d++) {
+            double v = sc * urow[d];
+            u_new[j * D + d] = v;
+            bot_imp[j] += v * v;
+            bot_orig_imp[j] += u_orig[j * D + d] * u_orig[j * D + d];
+          }
+        }
+        std::vector<double> cov(N_bot * N_bot, 0.0), cov_cross(N_bot * N_bot, 0.0);
+        for (size_t i = 0; i < N_bot; i++) {
+          for (size_t j = 0; j < N_bot; j++) {
+            double s_nn = 0.0, s_no = 0.0;
+            for (size_t d = 0; d < D; d++) {
+              s_nn += u_new[i * D + d] * u_new[j * D + d];
+              s_no += u_new[i * D + d] * u_orig[j * D + d];
+            }
+            if (i == j) {
+              s_nn += 1e-2 * bot_imp[i];
+              s_no += 1e-2 * std::sqrt(bot_imp[i] * bot_orig_imp[i]);
+            }
+            cov[i * N_bot + j] = s_nn;
+            cov_cross[i * N_bot + j] = s_no;
+          }
+        }
+        for (size_t r = 0; r < D; r++) {
+          int8_t* drow = reinterpret_cast<int8_t*>(&es[i_dn_q].data[r * N_bot]);
+          std::vector<int> orig_w(N_bot);
+          for (size_t j = 0; j < N_bot; j++) orig_w[j] = drow[j];
+          std::vector<double> g(N_bot, 0.0);
+          for (size_t i = 0; i < N_bot; i++) {
+            double s_g = 0.0;
+            for (size_t j = 0; j < N_bot; j++)
+              s_g += (cov[i * N_bot + j] - cov_cross[i * N_bot + j]) * orig_w[j];
+            g[i] = s_g;
+          }
+          auto snap_col = [&](size_t c, int vn_lo, int vn_hi) {
+            int v = drow[c];
+            double d_lo = vn_lo - v, d_hi = vn_hi - v, c_cc = cov[c * N_bot + c];
+            int vn = (2.0 * d_hi * g[c] + d_hi * d_hi * c_cc <= 2.0 * d_lo * g[c] + d_lo * d_lo * c_cc) ? vn_hi : vn_lo;
+            double dv = vn - v;
+            drow[c] = int8_t(vn);
+            const double* cov_c = &cov[c * N_bot];
+            for (size_t j = 0; j < N_bot; j++) g[j] += dv * cov_c[j];
+          };
+          std::vector<size_t> c1, c35;
+          for (size_t c = 0; c < N_bot; c++) {
+            int a = std::abs(int(drow[c]));
+            if (a == 1) c1.push_back(c);
+            else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+          }
+          auto cmp_c = [&](size_t a, size_t b) { return bot_imp[a] < bot_imp[b]; };
+          std::sort(c1.begin(), c1.end(), cmp_c);
+          std::sort(c35.begin(), c35.end(), cmp_c);
+          for (size_t c : c1) snap_col(c, 0, 2 * ((drow[c] > 0) ? 1 : -1));
+          for (size_t c : c35) {
+            int s = (drow[c] > 0) ? 1 : -1, a = std::abs(int(drow[c]));
+            int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+            snap_col(c, s * lo, s * hi);
+          }
+          for (int pass = 0; pass < 4; pass++) {
+            for (size_t c : c1) {
+              int s = (orig_w[c] > 0) ? 1 : -1, v_cur = drow[c], v_alt = (v_cur == 0) ? (2 * s) : 0;
+              double d_alt = v_alt - v_cur;
+              if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * N_bot + c] < -1e-12) {
+                drow[c] = int8_t(v_alt);
+                const double* cov_c = &cov[c * N_bot];
+                for (size_t j = 0; j < N_bot; j++) g[j] += d_alt * cov_c[j];
+              }
+            }
+            for (size_t c : c35) {
+              int s = (orig_w[c] > 0) ? 1 : -1, a = std::abs(orig_w[c]), v_cur = drow[c];
+              int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+              int v_alt = (v_cur == s * lo) ? (s * hi) : (s * lo);
+              double d_alt = v_alt - v_cur;
+              if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * N_bot + c] < -1e-12) {
+                drow[c] = int8_t(v_alt);
+                const double* cov_c = &cov[c * N_bot];
+                for (size_t j = 0; j < N_bot; j++) g[j] += d_alt * cov_c[j];
+              }
+            }
+          }
+        }
+      }
+    }
+
+
+    // QAT snapping for query_projection and key_projection in blocks >= qk_min_blk
+    int qk_min_blk = (argc >= 8) ? std::atoi(argv[7]) : 1;
+    int o_min_blk = (argc >= 9) ? std::atoi(argv[8]) : 0;
+    int v_min_blk = (argc >= 10) ? std::atoi(argv[9]) : 1;
+    for (int blk = qk_min_blk; blk < 16; blk++) {
+      std::string pref = "blocks." + std::to_string(blk) + ".attention.";
+      int i_qq = -1, i_qs = -1, i_kq = -1, i_ks = -1;
+      for (size_t i = 0; i <= last; i++) {
+        if (es[i].name == pref + "query_projection.weight.q") i_qq = int(i);
+        if (es[i].name == pref + "query_projection.weight.scale") i_qs = int(i);
+        if (es[i].name == pref + "key_projection.weight.q") i_kq = int(i);
+        if (es[i].name == pref + "key_projection.weight.scale") i_ks = int(i);
+      }
+      if (i_qq < 0 || i_qs < 0 || i_kq < 0 || i_ks < 0) continue;
+      const size_t D = 192;
+      const size_t Rk = es[i_kq].rows();
+      std::vector<int8_t> k_orig_all(es[i_kq].data.begin(), es[i_kq].data.end());
+      for (int idx_q : {i_kq, i_qq}) {
+        size_t R = es[idx_q].rows();
+        for (size_t r = 0; r < R; r++) {
+          int8_t* row = reinterpret_cast<int8_t*>(&es[idx_q].data[r * D]);
+          std::vector<int> orig_u(D);
+          double sq_orig = 0.0;
+          for (size_t d = 0; d < D; d++) { orig_u[d] = row[d]; sq_orig += double(row[d]) * row[d]; }
+          if (sq_orig <= 0.0) continue;
+          size_t rk = (Rk == 64) ? (r % 64) : r;
+          const int8_t* k_new_row = reinterpret_cast<const int8_t*>(&es[i_kq].data[rk * D]);
+          const int8_t* k_old_row = &k_orig_all[rk * D];
+          double sq_k = 0.0;
+          double dpk0 = 0.0;
+          if (idx_q == i_qq) {
+            for (size_t d = 0; d < D; d++) {
+              sq_k += double(k_new_row[d]) * k_new_row[d];
+              dpk0 += double(orig_u[d]) * (double(k_new_row[d]) - double(k_old_row[d]));
+            }
+          }
+          double w_sq = 8.0 / sq_orig, w_dot = 8.0 / sq_orig, w_sum = 2.0 / double(D);
+          double w_pk = (idx_q == i_qq && sq_k > 0.0) ? (4.0 / sq_k) : 0.0;
+          double dsq = 0.0, ddot = 0.0, dsum = 0.0, dpk = dpk0;
+          auto eval_cost = [&](size_t c, int v_cur, int v_new) {
+            double dv = v_new - v_cur;
+            double e_cur = v_cur - orig_u[c], e_new = v_new - orig_u[c];
+            double d_sq_new = dsq + (double(v_new) * v_new - double(v_cur) * v_cur);
+            double d_dot_new = ddot + dv * orig_u[c];
+            double d_sum_new = dsum + dv;
+            double d_pk_new = dpk + ((idx_q == i_qq) ? dv * double(k_new_row[c]) : 0.0);
+            return (e_new * e_new - e_cur * e_cur)
+                 + w_sq * (d_sq_new * d_sq_new - dsq * dsq)
+                 + w_dot * (d_dot_new * d_dot_new - ddot * ddot)
+                 + w_sum * (d_sum_new * d_sum_new - dsum * dsum)
+                 + w_pk * (d_pk_new * d_pk_new - dpk * dpk);
+          };
+          auto snap_u = [&](size_t c, int vn_lo, int vn_hi) {
+            int v = row[c];
+            int vn = (eval_cost(c, v, vn_hi) <= eval_cost(c, v, vn_lo)) ? vn_hi : vn_lo;
+            double dv = vn - v;
+            dsq += double(vn) * vn - double(v) * v;
+            ddot += dv * orig_u[c];
+            dsum += dv;
+            if (idx_q == i_qq) dpk += dv * double(k_new_row[c]);
+            row[c] = int8_t(vn);
+          };
+          std::vector<size_t> c1, c35;
+          for (size_t c = 0; c < D; c++) {
+            int a = std::abs(int(row[c]));
+            if (a == 1) c1.push_back(c);
+            else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+          }
+          for (size_t c : c1) snap_u(c, 0, 2 * ((row[c] > 0) ? 1 : -1));
+          for (size_t c : c35) {
+            int s_u = (row[c] > 0) ? 1 : -1, a = std::abs(int(row[c]));
+            int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+            snap_u(c, s_u * lo, s_u * hi);
+          }
+          for (int pass = 0; pass < 4; pass++) {
+            for (size_t c : c1) {
+              int s_u = (orig_u[c] > 0) ? 1 : -1, v_cur = row[c], v_alt = (v_cur == 0) ? (2 * s_u) : 0;
+              if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+                double d_alt = v_alt - v_cur;
+                dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                ddot += d_alt * orig_u[c];
+                dsum += d_alt;
+                if (idx_q == i_qq) dpk += d_alt * double(k_new_row[c]);
+                row[c] = int8_t(v_alt);
+              }
+            }
+            for (size_t c : c35) {
+              int s_u = (orig_u[c] > 0) ? 1 : -1, a = std::abs(orig_u[c]), v_cur = row[c];
+              int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+              int v_alt = (v_cur == s_u * lo) ? (s_u * hi) : (s_u * lo);
+              if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+                double d_alt = v_alt - v_cur;
+                dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                ddot += d_alt * orig_u[c];
+                dsum += d_alt;
+                if (idx_q == i_qq) dpk += d_alt * double(k_new_row[c]);
+                row[c] = int8_t(v_alt);
+              }
+            }
+          }
+        }
+      }
+    }
+    // Coupled QAT snapping for value_projection and output_projection in blocks >= vo_min_blk
+    for (int blk = std::min(o_min_blk, v_min_blk); blk < 16; blk++) {
+      std::string pref = "blocks." + std::to_string(blk) + ".attention.";
+      int i_vq = -1, i_vs = -1, i_oq = -1, i_os = -1;
+      for (size_t i = 0; i <= last; i++) {
+        if (es[i].name == pref + "value_projection.weight.q") i_vq = int(i);
+        if (es[i].name == pref + "value_projection.weight.scale") i_vs = int(i);
+        if (es[i].name == pref + "output_projection.weight.q") i_oq = int(i);
+        if (es[i].name == pref + "output_projection.weight.scale") i_os = int(i);
+      }
+      if (i_vq < 0 || i_vs < 0 || i_oq < 0 || i_os < 0) continue;
+      const size_t Rv = es[i_vq].rows(), D = 192;
+      const uint16_t* v_sc = reinterpret_cast<const uint16_t*>(es[i_vs].data.data());
+      const uint16_t* o_sc = reinterpret_cast<const uint16_t*>(es[i_os].data.data());
+      std::vector<uint32_t> v_digs(64, 0);
+      for (size_t k = 0; k < 64; k++) {
+        uint32_t c = 0;
+        for (size_t j = k + 1; j < 64; j++)
+          c += std::memcmp(&es[i_vq].data[j * D], &es[i_vq].data[k * D], D) < 0;
+        v_digs[k] = c;
+      }
+      int i_vc = -1, i_wn = -1;
+      for (size_t i = 0; i <= last; i++) {
+        if (es[i].name == pref + "value_convolution.weight") i_vc = int(i);
+        if (es[i].name == pref + "output_fused_norm_gate.weight") i_wn = int(i);
+      }
+      std::vector<double> ch_mult(Rv, 1.0);
+      if (i_vc >= 0 && i_wn >= 0) {
+        const float* vc = reinterpret_cast<const float*>(es[i_vc].data.data());
+        const float* wn = reinterpret_cast<const float*>(es[i_wn].data.data());
+        for (size_t j = 0; j < Rv; j++) {
+          double csq = 0.0;
+          for (size_t t = 0; t < 4; t++) csq += double(vc[j * 4 + t]) * vc[j * 4 + t];
+          ch_mult[j] = std::sqrt(csq + 1e-6) * std::abs(double(wn[j % 64]));
+        }
+      }
+      std::vector<double> v_orig(Rv * D, 0.0);
+      for (size_t j = 0; j < Rv; j++) {
+        double sc = bf16_val(v_sc[j]) * ch_mult[j];
+        const int8_t* vrow = reinterpret_cast<const int8_t*>(&es[i_vq].data[j * D]);
+        for (size_t d = 0; d < D; d++) v_orig[j * D + d] = sc * vrow[d];
+      }
+      auto order_ok = [&](size_t j) {
+        if (j >= 64) return true;
+        const uint8_t* cur = &es[i_vq].data[j * D];
+        for (size_t o = 0; o < 64; o++)
+          if (o != j && std::memcmp(&es[i_vq].data[o * D], cur, D) == 0) return false;
+        return true;
+      };
+      if (blk >= v_min_blk) {
+      for (size_t j = 0; j < Rv; j++) {
+        int8_t* vrow = reinterpret_cast<int8_t*>(&es[i_vq].data[j * D]);
+        std::vector<int> orig_u(D);
+        double sq_orig = 0.0;
+        for (size_t d = 0; d < D; d++) { orig_u[d] = vrow[d]; sq_orig += double(vrow[d]) * vrow[d]; }
+        if (sq_orig <= 0.0) continue;
+        double w_sq = 8.0 / sq_orig, w_dot = 8.0 / sq_orig, w_sum = 2.0 / double(D);
+        double dsq = 0.0, ddot = 0.0, dsum = 0.0;
+        auto eval_cost = [&](size_t c, int v_cur, int v_new) {
+          double dv = v_new - v_cur;
+          double e_cur = v_cur - orig_u[c], e_new = v_new - orig_u[c];
+          double d_sq_new = dsq + (double(v_new) * v_new - double(v_cur) * v_cur);
+          double d_dot_new = ddot + dv * orig_u[c];
+          double d_sum_new = dsum + dv;
+          return (e_new * e_new - e_cur * e_cur)
+               + w_sq * (d_sq_new * d_sq_new - dsq * dsq)
+               + w_dot * (d_dot_new * d_dot_new - ddot * ddot)
+               + w_sum * (d_sum_new * d_sum_new - dsum * dsum);
+        };
+        auto snap_u = [&](size_t c, int vn_lo, int vn_hi) {
+          int v = vrow[c];
+          int vn1 = (eval_cost(c, v, vn_hi) <= eval_cost(c, v, vn_lo)) ? vn_hi : vn_lo;
+          int vn2 = (vn1 == vn_hi) ? vn_lo : vn_hi;
+          int vn = v;
+          vrow[c] = int8_t(vn1);
+          if (order_ok(j)) vn = vn1;
+          else {
+            vrow[c] = int8_t(vn2);
+            if (order_ok(j)) vn = vn2;
+            else vrow[c] = int8_t(v);
+          }
+          double dv = vn - v;
+          dsq += double(vn) * vn - double(v) * v;
+          ddot += dv * orig_u[c];
+          dsum += dv;
+          vrow[c] = int8_t(vn);
+        };
+        std::vector<size_t> c1, c35;
+        for (size_t c = 0; c < D; c++) {
+          int a = std::abs(int(vrow[c]));
+          if (a == 1) c1.push_back(c);
+          else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+        }
+        for (size_t c : c1) snap_u(c, 0, 2 * ((vrow[c] > 0) ? 1 : -1));
+        for (size_t c : c35) {
+          int s_u = (vrow[c] > 0) ? 1 : -1, a = std::abs(int(vrow[c]));
+          int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+          snap_u(c, s_u * lo, s_u * hi);
+        }
+        for (int pass = 0; pass < 4; pass++) {
+          for (size_t c : c1) {
+            int s_u = (orig_u[c] > 0) ? 1 : -1, v_cur = vrow[c], v_alt = (v_cur == 0) ? (2 * s_u) : 0;
+            if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+              vrow[c] = int8_t(v_alt);
+              if (order_ok(j)) {
+                double d_alt = v_alt - v_cur;
+                dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                ddot += d_alt * orig_u[c];
+                dsum += d_alt;
+              } else vrow[c] = int8_t(v_cur);
+            }
+          }
+          for (size_t c : c35) {
+            int s_u = (orig_u[c] > 0) ? 1 : -1, a = std::abs(orig_u[c]), v_cur = vrow[c];
+            int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+            int v_alt = (v_cur == s_u * lo) ? (s_u * hi) : (s_u * lo);
+            if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+              vrow[c] = int8_t(v_alt);
+              if (order_ok(j)) {
+                double d_alt = v_alt - v_cur;
+                dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                ddot += d_alt * orig_u[c];
+                dsum += d_alt;
+              } else vrow[c] = int8_t(v_cur);
+            }
+          }
+        }
+      }
+      std::vector<int> idx(64);
+      for (size_t j = 0; j < 64; j++) idx[j] = int(j);
+      std::sort(idx.begin(), idx.end(), [&](int x, int y) {
+        return std::memcmp(&es[i_vq].data[size_t(x) * D], &es[i_vq].data[size_t(y) * D], D) < 0;
+      });
+      std::vector<int> perm(64);
+      for (size_t j = 0; j < 64; j++) {
+        uint32_t d = v_digs[j];
+        perm[j] = idx[d];
+        idx.erase(idx.begin() + d);
+      }
+      for (const auto& G : gs) {
+        if (G.key == i_vq && G.r0 == 0) {
+          apply_perm(es, G, perm);
+          break;
+        }
+      }
+      std::vector<double> old_v = v_orig;
+      for (size_t h = 0; h < Rv / 64; h++)
+        for (size_t j = 0; j < 64; j++)
+          std::memcpy(&v_orig[(64 * h + j) * D], &old_v[(64 * h + size_t(perm[j])) * D], D * sizeof(double));
+      v_sc = reinterpret_cast<const uint16_t*>(es[i_vs].data.data());
+      }
+      std::vector<double> v_new(Rv * D, 0.0);
+      for (size_t j = 0; j < Rv; j++) {
+        double sc = bf16_val(v_sc[j]) * ch_mult[j];
+        const int8_t* vrow = reinterpret_cast<const int8_t*>(&es[i_vq].data[j * D]);
+        for (size_t d = 0; d < D; d++) v_new[j * D + d] = sc * vrow[d];
+      }
+      std::vector<double> cov(D * D, 0.0), cov_cross(D * D, 0.0), ch_imp(D, 0.0);
+      std::vector<double> nrm_new(Rv, 0.0), nrm_orig(Rv, 0.0);
+      for (size_t j = 0; j < Rv; j++) {
+        double sn = 0.0, so = 0.0;
+        for (size_t d = 0; d < D; d++) {
+          sn += v_new[j * D + d] * v_new[j * D + d];
+          so += v_orig[j * D + d] * v_orig[j * D + d];
+        }
+        nrm_new[j] = std::sqrt(sn + 1e-12);
+        nrm_orig[j] = std::sqrt(so + 1e-12);
+      }
+      for (size_t ci = 0; ci < D; ci++) {
+        size_t vi = (Rv == 64) ? (ci % 64) : ci;
+        const double* vni = &v_new[vi * D];
+        double ni = nrm_new[vi];
+        ch_imp[ci] = ni * ni;
+        for (size_t cj = 0; cj < D; cj++) {
+          size_t vj = (Rv == 64) ? (cj % 64) : cj;
+          const double* vnj = &v_new[vj * D];
+          const double* voj = &v_orig[vj * D];
+          double nj = nrm_new[vj], noj = nrm_orig[vj];
+          double dot_nn = 0.0, dot_no = 0.0;
+          for (size_t d = 0; d < D; d++) {
+            dot_nn += vni[d] * vnj[d];
+            dot_no += vni[d] * voj[d];
+          }
+          auto f_kern = [&](double rho) {
+            if (Rv == 64) return rho; // linear V in window attention
+            rho = std::max(-1.0, std::min(1.0, rho));
+            double th = std::acos(rho);
+            double j1 = (std::sin(th) + (kPi - th) * rho) / kPi;
+            return 0.5 * rho + 0.5 * j1;
+          };
+          double h_scale = (ci / 64 == cj / 64) ? 1.0 : ((Rv == 64) ? 0.25 : 0.10);
+          double s_nn = ni * nj * f_kern(dot_nn / (ni * nj)) * h_scale;
+          double s_no = ni * noj * f_kern(dot_no / (ni * noj)) * h_scale;
+          if (ci == cj) {
+            s_nn += 0.25 * ni * ni;
+            s_no += 0.25 * ni * noj;
+          }
+          cov[ci * D + cj] = s_nn;
+          cov_cross[ci * D + cj] = s_no;
+        }
+      }
+      if (blk >= o_min_blk)
+      for (size_t r = 0; r < D; r++) {
+        int8_t* orow = reinterpret_cast<int8_t*>(&es[i_oq].data[r * D]);
+        std::vector<int> orig_w(D);
+        for (size_t j = 0; j < D; j++) orig_w[j] = orow[j];
+        std::vector<double> g(D, 0.0);
+        for (size_t i = 0; i < D; i++) {
+          double s_g = 0.0;
+          for (size_t j = 0; j < D; j++)
+            s_g += (cov[i * D + j] - cov_cross[i * D + j]) * orig_w[j];
+          g[i] = s_g;
+        }
+        auto snap_col = [&](size_t c, int vn_lo, int vn_hi) {
+          int v = orow[c];
+          double d_lo = vn_lo - v, d_hi = vn_hi - v, c_cc = cov[c * D + c];
+          int vn = (2.0 * d_hi * g[c] + d_hi * d_hi * c_cc <= 2.0 * d_lo * g[c] + d_lo * d_lo * c_cc) ? vn_hi : vn_lo;
+          double dv = vn - v;
+          orow[c] = int8_t(vn);
+          const double* cov_c = &cov[c * D];
+          for (size_t j = 0; j < D; j++) g[j] += dv * cov_c[j];
+        };
+        std::vector<size_t> c1, c35;
+        for (size_t c = 0; c < D; c++) {
+          int a = std::abs(int(orow[c]));
+          if (a == 1) c1.push_back(c);
+          else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+        }
+        auto cmp_c = [&](size_t a, size_t b) { return ch_imp[a] < ch_imp[b]; };
+        std::sort(c1.begin(), c1.end(), cmp_c);
+        std::sort(c35.begin(), c35.end(), cmp_c);
+        for (size_t c : c1) snap_col(c, 0, 2 * ((orow[c] > 0) ? 1 : -1));
+        for (size_t c : c35) {
+          int s = (orow[c] > 0) ? 1 : -1, a = std::abs(int(orow[c]));
+          int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+          snap_col(c, s * lo, s * hi);
+        }
+        for (int pass = 0; pass < 4; pass++) {
+          for (size_t c : c1) {
+            int s = (orig_w[c] > 0) ? 1 : -1, v_cur = orow[c], v_alt = (v_cur == 0) ? (2 * s) : 0;
+            double d_alt = v_alt - v_cur;
+            if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * D + c] < -1e-12) {
+              orow[c] = int8_t(v_alt);
+              const double* cov_c = &cov[c * D];
+              for (size_t j = 0; j < D; j++) g[j] += d_alt * cov_c[j];
+            }
+          }
+          for (size_t c : c35) {
+            int s = (orig_w[c] > 0) ? 1 : -1, a = std::abs(orig_w[c]), v_cur = orow[c];
+            int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+            int v_alt = (v_cur == s * lo) ? (s * hi) : (s * lo);
+            double d_alt = v_alt - v_cur;
+            if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * D + c] < -1e-12) {
+              orow[c] = int8_t(v_alt);
+              const double* cov_c = &cov[c * D];
+              for (size_t j = 0; j < D; j++) g[j] += d_alt * cov_c[j];
+            }
+          }
+        }
+      }
+    }
+
     std::vector<uint8_t> enc = encodings(es, 5, true);
     BinEncoder EA;
     HeadCoder H;

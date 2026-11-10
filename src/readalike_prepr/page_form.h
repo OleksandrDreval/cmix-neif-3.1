@@ -308,7 +308,15 @@ static int g1_dec_getline(char *s, FILE *in, U64 tsize) {
 
 static int g1_dec_offen(void) { return g1_epos < g1_en; }
 
+static void g1_free(void) {
+  free(g1_pb); g1_pb = 0; g1_pn = g1_pc = 0;
+  free(g1_ob); g1_ob = 0; g1_oc = 0;
+  free(g1_db); g1_db = 0; g1_dn = g1_dc = 0;
+  free(g1_eb); g1_eb = 0; g1_en = g1_ec = g1_epos = 0;
+}
+
 static void g1_bericht(void) {
+  g1_free();
 }
 
 #endif

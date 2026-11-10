@@ -23,7 +23,7 @@ decompressor. It serves reproducibility and attribution for `cmix-neif-3.1`
    closed-form analytical $\text{ReLU}^2$ cross-covariance compensation (`qat-snap`) to
    re-encode the `.c5` transformer weight container
    (`tf/3_train/export/np2/tf1_np_codec.cpp`, from `3,744,629 B` to
-   `3,512,771 B`, `-231,858 B` per copy / `-463,716 B` in `S`) and rounded slot-1
+   `3,352,617 B`, `-392,012 B` per copy / `-784,024 B` in `S`) and rounded slot-1
    mantissas + packed
    `kBlobW[24669]` via single-byte `(e_code << 4) | s` encoding of `BITLSTM`
    (`../src/bit_head_weights.h`, `-24,489 B` `.rodata`, `-49.8 %`)
@@ -345,7 +345,7 @@ configurations (`window_size`).
 | zeroing of collapsed attention rows, format v4 | `export4/convert_container_v4.py` | 3,769,904 B, sha256 `38b7c162…` |
 | format v5 (entropy coding of the weights) | `export4/convert_container_v5.py` | 3,767,643 B, sha256 `11ef8fdf…` |
 | format NP2 (order of interchangeable neuron groups coded by their permutation; dead key dimensions of the KDA layers zeroed) | `export/np2/np2_container.py np <v5> <out> k fw np2 dead` | 3,744,629 B, sha256 `729694cba4969b7d833686ed3f597ff04d3b226da849d5f8004ec020a0ed9563` |
-| format NP2 (`cmix-neif-3.1` probability mixing + `gbit` + fast-weight-preserving `qat-snap`) | `export/np2/tf1_np_codec qat-snap <in.c5> <out.c5> 4 6 12` | 3,512,771 B, sha256 `cda620662f617c81ceaba2559ea79db7acd179d12399e451c516fb5a126ff2fe` |
+| format NP2 (`cmix-neif-3.1` probability mixing + `gbit` + coupled `mlp`/`gate`/`o` `qat-snap`) | `export/np2/tf1_np_codec qat-snap <in.c5> <out.c5>` | 3,352,617 B, sha256 `3b19418f5abd22dad7a3fdbeceb6ecce8742caf59a13812b00be15e066bdc316` |
 
 `export4/export.sh` runs the second to fourth step; when no neuron is dead it
 passes the container on unchanged. For this package the steps from the

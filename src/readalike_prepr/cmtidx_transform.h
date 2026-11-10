@@ -362,7 +362,11 @@ static ENC_ONLY int cmt_enc_cb(const char* p, long n, long* outn, const char** o
 // Rewrite a file in place (via a temporary file).
 template <int enc>
 static DIR_INLINE int cmtidx_inplace(const char* path, const char* tmp) {
-  return page_file(path, tmp, enc ? cmt_enc_cb : cmt_dec_cb, 1);
+  const int ok = page_file(path, tmp, enc ? cmt_enc_cb : cmt_dec_cb, 1);
+  free(cmt_ob); cmt_ob = 0; cmt_obcap = 0;
+  free(cmt_tb); cmt_tb = 0; cmt_tbcap = 0;
+  free(cmt_sb); cmt_sb = 0; cmt_sbcap = 0;
+  return ok;
 }
 
 // The encoder direction (compression path only), see enc_only.h.
@@ -374,15 +378,13 @@ static ENC_ONLY int cmtidx_inplace_enc(const char* path, const char* tmp) {
 static long cmtidx_count_lines(const char* path) {
   FILE* f = fopen(path, "rb");
   if (!f) return -1;
-  const long CH = 1 << 20;
-  char* b = (char*)malloc((size_t)CH);
-  if (!b) { fclose(f); return -1; }
+  char b[1 << 16];
   long cnt = 0;
   size_t got;
-  while ((got = fread(b, 1, (size_t)CH, f)) > 0) {
-    for (size_t i = 0; i < got; ++i) if (b[i] == '\n') ++cnt;
+  while ((got = fread(b, 1, sizeof(b), f)) > 0) {
+    for (const char *p = b, *end = b + got; (p = (const char*)memchr(p, '\n', (size_t)(end - p))) != 0; ++p)
+      ++cnt;
   }
-  free(b);
   fclose(f);
   return cnt;
 }

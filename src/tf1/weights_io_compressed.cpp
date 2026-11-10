@@ -631,7 +631,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
         if (in_A) {
           static constexpr uint8_t kW2d[8] = {0, 4, 4, 3, 1, 2, 2, 3};
           static constexpr uint8_t kW3d[8] = {0, 2, 2, 2, 0, 1, 1, 2};
-          static constexpr uint8_t kWrc[8] = {0, 3, 3, 3, 7, 6, 6, 3};
+          static constexpr uint8_t kWrc[8] = {0, 5, 5, 5, 7, 6, 6, 3};
           static constexpr uint8_t kWgr[8] = {0, 0, 0, 0, 6, 5, 5, 0};
           CountNode* cw = &m->cint4w[ci * 128];
           CountNode* c2 = &m->c2d[ci * 1024];
@@ -700,7 +700,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
               uint32_t ur_mag = (r0 > 0 && k + 1 < cols) ? uint32_t(std::abs(int(row[k - cols + 1]))) : 0;
               uint32_t pm_bin = prev_mag == 0 ? 0 : (prev_mag <= 2 ? 1 : (prev_mag <= 4 ? 2 : 3));
               uint32_t um_bin = up_mag == 0 ? 0 : (up_mag <= 2 ? 1 : (up_mag <= 4 ? 2 : 3));
-              uint32_t ctx2d_base = ((pm_bin << 2) | um_bin) * 2 + (k & 1);
+              uint32_t ctx2d_base = ((pm_bin << 2) | um_bin) * 2 + uint32_t(gbit);
               uint32_t ctx3d_base = (pm_bin << 3) | ((prev2_mag > 0 ? 1u : 0u) << 2) |
                                     (((dg_mag + ur_mag) > 0 ? 1u : 0u) << 1) | (up_mag > 0 ? 1u : 0u);
               uint32_t node = 1;
@@ -769,7 +769,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
                 uint64_t ps_c = (uint64_t(c_pos[k]) * 2048ull + 320ull * ps_t) / (cs[k] + 320ull);
                 uint64_t p_src = (ps_r * ps_c) / ps_t;
                 if (p_src > 2047) p_src = 2047;
-                int bit = dec.decode_p((14u * ProbCN(&sw[ctx]) + 6u * ProbCN(&s2[ctx2]) + 4u * ProbCN(&sr[ctx3]) + 8u * uint32_t(p_src)) >> 5);
+                int bit = dec.decode_p((13u * ProbCN(&sw[ctx]) + 6u * ProbCN(&s2[ctx2]) + 4u * ProbCN(&sr[ctx3]) + 9u * uint32_t(p_src)) >> 5);
                 UpdCN(&sw[ctx], bit, CNT_LIMIT_SIGN);
                 UpdCN(&s2[ctx2], bit, CNT_LIMIT_SIGN);
                 UpdCN(&sr[ctx3], bit, CNT_LIMIT_SIGN);
@@ -1020,7 +1020,7 @@ WeightsFile WeightsFile::load_compressed(const char* path) {
 #if !NEIF_TF1_WC5
   unsigned long long h = 14695981039346656037ULL;
   for (size_t i = 0; i < n; i++) h = (h ^ buf[i]) * 1099511628211ULL;
-  if (h != 0x844f1f2bf695ec2bULL)
+  if (h != 0x00b9fe820e1dd94dULL)
     msg_stop(207)
 ;
 #endif

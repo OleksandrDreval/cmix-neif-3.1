@@ -258,7 +258,10 @@ void Decode(FILE* in, FILE* out, FILE* dictionary) {
   while (true) {
     int result = DecodeByte(in, dictionary);
     if (result == -1) {
-      if (dict != NULL) delete dict;
+      if (dict != NULL) {
+        delete dict;
+        dict = NULL;
+      }
       return;
     }
     isbn_check::after_at.Put(result, out);

@@ -156,7 +156,7 @@ inline void SetBlobForm() { BlobForm() = true; }
 // is read from the environment.
 inline const char* WeightsPath() { return "weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5"; }
 inline unsigned long long WeightsFingerprint() {
-  return 0x844f1f2bf695ec2bULL;
+  return 0x00b9fe820e1dd94dULL;
 }
 inline bool Mute() { return false; }
 
