@@ -349,7 +349,7 @@ configurations (`window_size`).
 | zeroing of collapsed attention rows, format v4 | `export4/convert_container_v4.py` | 3,769,904 B, sha256 `38b7c162…` |
 | format v5 (entropy coding of the weights) | `export4/convert_container_v5.py` | 3,767,643 B, sha256 `11ef8fdf…` |
 | format NP2 (order of interchangeable neuron groups coded by their permutation; dead key dimensions of the KDA layers zeroed) | `export/np2/np2_container.py np <v5> <out> k fw np2 dead` | 3,744,629 B, sha256 `729694cba4969b7d833686ed3f597ff04d3b226da849d5f8004ec020a0ed9563` |
-| format NP2 (`cmix-neif-3.1` probability mixing + 100 % Stream A grid + unconditional 4-bit scale/f32 mantissas + Lagrangian RDO & coupled `qat-snap`) | `export/np2/tf1_np_codec qat-snap <in.c5> <out.c5>` | 3,043,805 B, sha256 `1397bda44019b8470e22dcfc496860e881e0e060c5f69f65b908bb9c8e3afc33` |
+| format NP2 (`cmix-neif-3.1` split-Dirichlet probability mixing + 100 % Stream A grid + unconditional 4-bit scale/f32 mantissas + continuous-target $\alpha$-rescaled multi-candidate Lagrangian RDO & coupled `qat-snap`) | `export/np2/tf1_np_codec qat-snap <in.c5> <out.c5>` | 2,789,635 B, sha256 `3c82e28426cb7e1d74ce389b34d6f200704553bc8f38c022328a62f23afc9479` |
 
 `export4/export.sh` runs the second to fourth step; when no neuron is dead it
 passes the container on unchanged. For this package the steps from the

@@ -420,6 +420,7 @@ __attribute__((noinline)) static int relu2q_phase2(const QDense& m, const float*
     uint32_t mz = static_cast<uint32_t>(_mm256_movemask_epi8(
         _mm256_cmpeq_epi8(v, _mm256_setzero_si256())));
     uint32_t mk = ~mz;
+    if (!mk) continue;
     for (int k = 0; k < 4; k++) {
       const uint32_t m8 = (mk >> (8 * k)) & 0xFF;
       __m128i lut = _mm_loadl_epi64(
@@ -468,57 +469,7 @@ int qgemv_relu2q(const QDense& m, const uint8_t* act, float s_next,
   alignas(64) float y[1024];
   EpiF32 e{y};
   run_g8<6, PFN_DEFAULT>(m, act, e);
-  // phase 2a: relu^2 + quantize, two groups (16 outputs) per iteration
-  const __m256 vs = _mm256_set1_ps(s_next);
-  const __m256 v127 = _mm256_set1_ps(127.0f);
-  const __m256 vz = _mm256_setzero_ps();
-  const int ng2 = m.ngroups & ~1;
-  for (int g = 0; g < ng2; g += 2) {
-    __m256 y0 = _mm256_max_ps(_mm256_load_ps(y + 8 * g), vz);  // relu
-    __m256 y1 = _mm256_max_ps(_mm256_load_ps(y + 8 * g + 8), vz);
-    __m256 t0 = _mm256_div_ps(_mm256_mul_ps(y0, y0), vs);  // IEEE div
-    __m256 t1 = _mm256_div_ps(_mm256_mul_ps(y1, y1), vs);
-    __m256i q0 = _mm256_cvtps_epi32(_mm256_min_ps(t0, v127));  // rte
-    __m256i q1 = _mm256_cvtps_epi32(_mm256_min_ps(t1, v127));
-    __m256i q16 = _mm256_packs_epi32(q0, q1);  // lanes [q0lo q1lo|q0hi q1hi]
-    q16 = _mm256_permute4x64_epi64(q16, _MM_SHUFFLE(3, 1, 2, 0));
-    __m128i q8v = _mm_packus_epi16(_mm256_castsi256_si128(q16),
-                                   _mm256_extracti128_si256(q16, 1));
-    _mm_storeu_si128(reinterpret_cast<__m128i*>(q_out + 8 * g), q8v);
-  }
-  if (m.ngroups & 1) {
-    const int g = m.ngroups - 1;
-    __m256 yv = _mm256_max_ps(_mm256_load_ps(y + 8 * g), vz);
-    __m256 t = _mm256_div_ps(_mm256_mul_ps(yv, yv), vs);
-    __m256i q = _mm256_cvtps_epi32(_mm256_min_ps(t, v127));
-    __m128i q16 = _mm_packs_epi32(_mm256_castsi256_si128(q),
-                                  _mm256_extracti128_si256(q, 1));
-    _mm_storel_epi64(reinterpret_cast<__m128i*>(q_out + 8 * g),
-                     _mm_packus_epi16(q16, q16));
-  }
-  // phase 2b: 32-wide nonzero index scan over the packed bytes
-  int nnz = 0;
-  const int nblk = m.rows_padded / 32;
-  for (int b = 0; b < nblk; b++) {
-    __m256i v = _mm256_load_si256(
-        reinterpret_cast<const __m256i*>(q_out + 32 * b));
-    uint32_t mz = static_cast<uint32_t>(_mm256_movemask_epi8(
-        _mm256_cmpeq_epi8(v, _mm256_setzero_si256())));
-    uint32_t mk = ~mz;
-    for (int k = 0; k < 4; k++) {
-      const uint32_t m8 = (mk >> (8 * k)) & 0xFF;
-      __m128i lut = _mm_loadl_epi64(
-          reinterpret_cast<const __m128i*>(g_bitpos.t[m8]));
-      __m128i i16 = _mm_add_epi16(
-          _mm_cvtepu8_epi16(lut),
-          _mm_set1_epi16(static_cast<short>(32 * b + 8 * k)));
-      _mm_storeu_si128(reinterpret_cast<__m128i*>(idx_out + nnz), i16);
-      nnz += __builtin_popcount(m8);
-    }
-  }
-  for (int r = m.rows_padded & ~31; r < m.rows_padded; r++)  // tail (unused
-    if (q_out[r]) idx_out[nnz++] = static_cast<uint16_t>(r);  // for 768)
-  return nnz;
+  return relu2q_phase2(m, y, s_next, q_out, idx_out);
 }
 
 void qgemv_quant_bias(const QDense& m, const uint8_t* act, float s_next,
@@ -528,19 +479,7 @@ void qgemv_quant_bias(const QDense& m, const uint8_t* act, float s_next,
   alignas(64) float y[1024];
   EpiF32 e{y};
   run_g8<6, PFN_DEFAULT>(m, act, e);
-  const __m256 vs = _mm256_set1_ps(s_next);
-  const __m256 vlo = _mm256_set1_ps(-128.0f);
-  const __m256 vhi = _mm256_set1_ps(127.0f);
-  const __m256i v128 = _mm256_set1_epi32(128);
-  for (int g = 0; g < m.ngroups; g++) {
-    __m256 t = _mm256_div_ps(_mm256_load_ps(y + 8 * g), vs);
-    t = _mm256_min_ps(_mm256_max_ps(t, vlo), vhi);
-    __m256i q = _mm256_add_epi32(_mm256_cvtps_epi32(t), v128);  // -> [0,255]
-    __m128i q16 = _mm_packs_epi32(_mm256_castsi256_si128(q),
-                                  _mm256_extracti128_si256(q, 1));
-    _mm_storel_epi64(reinterpret_cast<__m128i*>(q_out + 8 * g),
-                     _mm_packus_epi16(q16, q16));
-  }
+  quant_bias_phase2(m, y, s_next, q_out);
 }
 
 void qgemm(const QDense& m, const uint8_t* act0, ptrdiff_t astr, float* out0,

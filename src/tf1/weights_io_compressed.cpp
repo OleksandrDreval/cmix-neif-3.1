@@ -374,14 +374,14 @@ void CopyWarmCN(CountNode* dst, const CountNode* src, size_t n, int sh) {
 // the models of load_v2 that this container reaches
 struct ModelleId {
   uint8_t meta_prev;
-  uint8_t* last_zrow;           // zero-row mask (+ row sq bucket << 1) of immediately preceding ENC_INT4W tensor
+  uint8_t last_zrow[1024];      // zero-row mask (+ row sq bucket << 1) of immediately preceding ENC_INT4W tensor
   size_t last_zrow_n;
   int last_int4_ci, last_bf16_ci, last_f32_ci;
   uint16_t* bf16c[kNamenN];     // ENC_BF16C lo trees per canonical name (5 * 257 * 256), on first use
   uint16_t* f32hl_ci[kNamenN];  // ENC_F32HC lo trees per canonical name (6 * 257 * 256), on first use
   CountNode* bf16c_hi[kNamenN]; // ENC_BF16C hi counting tree per canonical name, on first use
   CountNode* f32hc[kNamenN];    // ENC_F32HC hi trees per canonical name, on first use
-  CountNode* cname[65536];      // order-2 name trees, per context on first use
+  CountNode* cname[16384];      // order-2 ASCII name trees, per context on first use
   // Contiguous block of {1, 1} CountNodes:
   CountNode zrow, tname, tblock, tmeta;
   CountNode zr_ctx[kNamenN * 2];
@@ -523,7 +523,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
       size_t len = get_meta(0);
       uint32_t c2 = 0, c1 = 0;
       for (size_t k = 0; k < len; k++) {
-        CountNode*& tree = m->cname[(c2 << 8) | c1];
+        CountNode*& tree = m->cname[((c2 & 127u) << 7) | (c1 & 127u)];
         if (!tree) {
           tree = static_cast<CountNode*>(std::malloc(256 * sizeof(CountNode)));
           FrischCN(tree, 256);
@@ -622,12 +622,11 @@ WeightsFile LoadId(Reader& r, const char* path) {
 
     switch (encoding) {
       case ENC_INT4W: {
-        std::free(m->last_zrow);
-        m->last_zrow = static_cast<uint8_t*>(std::calloc(rows ? rows : 1, 1));
+        std::memset(m->last_zrow, 0, rows);
         m->last_zrow_n = rows;
         int8_t* out = reinterpret_cast<int8_t*>(t.data);
         if (in_A) {
-          static constexpr uint8_t kW2d[4] = {0, 4, 4, 3};
+          static constexpr uint8_t kW2d[4] = {0, 3, 2, 2};
           CountNode* cw = &m->cint4w[ci * 64];
           CountNode* c2 = &m->c2d[ci * 256];
           CountNode* c3 = &m->c3d[ci * 512];
@@ -680,8 +679,8 @@ WeightsFile LoadId(Reader& r, const char* path) {
             for (size_t k = 0; k < cols; k++) {
               uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
               if (M < 1) M = 1;
-              uint64_t rr = (rs * 65536 + 16 * M) / (k + 16);
-              uint64_t cc = (cs[k] * 65536 + 40 * M) / (n + 40);
+              uint64_t rr = (rs * 65536 + 32 * M) / (k + 32);
+              uint64_t cc = (cs[k] * 65536 + 16 * M) / (n + 16);
               uint64_t w_mag = (rr * cc / M) >> 4;
               uint32_t up_mag = (r0 > 0) ? uint32_t(std::abs(int(row[k - cols]))) : 0;
               uint32_t dg_mag = (r0 > 0 && k > 0) ? uint32_t(std::abs(int(row[k - cols - 1]))) : 0;
@@ -693,16 +692,16 @@ WeightsFile LoadId(Reader& r, const char* path) {
                                     (((dg_mag + ur_mag) > 0 ? 1u : 0u) << 1) | (up_mag > 0 ? 1u : 0u);
               uint32_t node = 1;
               for (int bit_k = 0; bit_k < 2; bit_k++) {
-                constexpr uint64_t dr = 16, dc = 32;
+                constexpr uint64_t dr1 = 128, dc1 = 8, dr2 = 64, dc2 = 16;
                 uint64_t t_n1 = t_vis[node] - t_n0[node];
                 uint64_t r_n1 = r_vis[node] - r_n0[node];
                 uint64_t c_n1 = c_vis[node * cols + k] - c_n0[node * cols + k];
                 uint64_t p1_t = ((t_n1 + 4) << 12) / (t_vis[node] + 8);
                 if (p1_t < 1) p1_t = 1;
-                uint64_t p1_r = ((r_n1 << 12) + dr * p1_t) / (r_vis[node] + dr);
-                uint64_t p1_c = ((c_n1 << 12) + dc * p1_t) / (c_vis[node * cols + k] + dc);
+                uint64_t p1_r = ((r_n1 << 12) + dr1 * p1_t) / (r_vis[node] + dr1);
+                uint64_t p1_c = ((c_n1 << 12) + dc1 * p1_t) / (c_vis[node * cols + k] + dc1);
                 uint64_t w_nd = ((p1_r * p1_c) / p1_t) * 4096ull / p1_t;
-                uint64_t b = (((6 * w_mag + 2 * w_nd) >> 3) * 16ull) / (6 * 4096);
+                uint64_t b = (((w_mag + w_nd) >> 1) * 16ull) / (6 * 4096);
                 if (b > 15) b = 15;
                 CountNode* cn = &cw[b * 4 + node];
                 CountNode* cn2 = &c2[((uint32_t(b >> 2) << 4) | ctx2d_base) * 4 + node];
@@ -710,12 +709,12 @@ WeightsFile LoadId(Reader& r, const char* path) {
                 uint32_t p_tree = ProbCN(cn), p_2d = ProbCN(cn2), p_3d = ProbCN(cn3);
                 uint64_t p_t = (t_n0[node] * 2048ull + 8ull * p_tree) / (t_vis[node] + 8ull);
                 if (p_t < 1) p_t = 1;
-                uint64_t p_r = (uint64_t(r_n0[node]) * 2048ull + dr * p_t) / (r_vis[node] + dr);
-                uint64_t p_c = (uint64_t(c_n0[node * cols + k]) * 2048ull + dc * p_t) / (c_vis[node * cols + k] + dc);
+                uint64_t p_r = (uint64_t(r_n0[node]) * 2048ull + dr2 * p_t) / (r_vis[node] + dr2);
+                uint64_t p_c = (uint64_t(c_n0[node * cols + k]) * 2048ull + dc2 * p_t) / (c_vis[node * cols + k] + dc2);
                 uint64_t p_rc = (p_r * p_c) / p_t;
                 if (p_rc > 2047) p_rc = 2047;
-                uint64_t wt = 25u - kW2d[node];
-                int bit = dec.decode_p(uint32_t((wt * p_tree + kW2d[node] * p_2d + 2u * p_3d + 5u * p_rc) >> 5));
+                uint64_t wt = 22u - kW2d[node];
+                int bit = dec.decode_p(uint32_t((wt * p_tree + kW2d[node] * p_2d + p_3d + 9u * p_rc) >> 5));
                 UpdCN(cn, bit, 3071);
                 UpdCN(cn2, bit, 3071);
                 UpdCN(cn3, bit, 3071);
@@ -742,11 +741,11 @@ WeightsFile LoadId(Reader& r, const char* path) {
                 uint32_t ctx3 = (ps & 3u) | ((r_pol & 3u) << 2) | ((c_str & 3u) << 4) | ((up_s & 3u) << 6);
                 uint64_t ps_t = (t_pos * 2048ull + 64ull * 1024ull) / (T + 64ull);
                 if (ps_t < 1) ps_t = 1;
-                uint64_t ps_r = (uint64_t(r_pos) * 2048ull + 192ull * ps_t) / (rs + 192ull);
-                uint64_t ps_c = (uint64_t(c_pos[k]) * 2048ull + 320ull * ps_t) / (cs[k] + 320ull);
+                uint64_t ps_r = (uint64_t(r_pos) * 2048ull + 256ull * ps_t) / (rs + 256ull);
+                uint64_t ps_c = (uint64_t(c_pos[k]) * 2048ull + 256ull * ps_t) / (cs[k] + 256ull);
                 uint64_t p_src = (ps_r * ps_c) / ps_t;
                 if (p_src > 2047) p_src = 2047;
-                int bit = dec.decode_p((13u * ProbCN(&sw[ctx]) + 6u * ProbCN(&s2[ctx2]) + 4u * ProbCN(&sr[ctx3]) + 9u * uint32_t(p_src)) >> 5);
+                int bit = dec.decode_p((12u * ProbCN(&sw[ctx]) + 6u * ProbCN(&s2[ctx2]) + 4u * ProbCN(&sr[ctx3]) + 10u * uint32_t(p_src)) >> 5);
                 UpdCN(&sw[ctx], bit, CNT_LIMIT_SIGN);
                 UpdCN(&s2[ctx2], bit, CNT_LIMIT_SIGN);
                 UpdCN(&sr[ctx3], bit, CNT_LIMIT_SIGN);
@@ -960,14 +959,13 @@ WeightsFile LoadId(Reader& r, const char* path) {
   }
   if (n_cn != size_t(kNamenN) || fnv != std::integral_constant<unsigned long long, namen::Fnv()>::value)
     msg_stop(268);
-  for (size_t c = 0; c < 65536; c++) std::free(m->cname[c]);
+  for (size_t c = 0; c < 16384; c++) std::free(m->cname[c]);
   for (int c = 0; c < kNamenN; c++) {
     std::free(m->bf16c[c]);
     std::free(m->f32hl_ci[c]);
     std::free(m->bf16c_hi[c]);
     std::free(m->f32hc[c]);
   }
-  std::free(m->last_zrow);
   std::free(m);
   std::free(bufB);
   std::free(x);
@@ -996,7 +994,7 @@ WeightsFile WeightsFile::load_compressed(const char* path) {
 #if !NEIF_TF1_WC5
   unsigned long long h = 14695981039346656037ULL;
   for (size_t i = 0; i < n; i++) h = (h ^ buf[i]) * 1099511628211ULL;
-  if (h != 0x00be37cea8109f47ULL)
+  if (h != 0xef3bf4aeffc73099ULL)
     msg_stop(207)
 ;
 #endif

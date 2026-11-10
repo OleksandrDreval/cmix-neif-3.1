@@ -269,12 +269,14 @@ int32_t sparse4_accum(const uint8_t* __restrict cols,
           a5 = vbias, a6 = vbias, a7 = vbias, a8 = vbias, a9 = vbias,
           a10 = vbias, a11 = vbias;
   uint32_t asum = 0;
-  const int npairs = nnz / 2;
+  const int npairs = (nnz + 1) / 2;
   int p = 0;
   while (p < npairs) {
     const int end = std::min(p + FLUSH_PAIRS4, npairs);
     for (; p < end; p++) {
-      const uint32_t i0 = idx[2 * p], i1 = idx[2 * p + 1];
+      const uint32_t i0 = idx[2 * p];
+      const bool has1 = (2 * p + 1 < nnz);
+      const uint32_t i1 = has1 ? idx[2 * p + 1] : i0;
       if (PF) {
         const char* f0 = reinterpret_cast<const char*>(cols) +
                          128u * idx[2 * (p + PF_PAIRS_AHEAD)];
@@ -287,21 +289,11 @@ int32_t sparse4_accum(const uint8_t* __restrict cols,
       }
       const __m256i* c0 = reinterpret_cast<const __m256i*>(cols + 128u * i0);
       const __m256i* c1 = reinterpret_cast<const __m256i*>(cols + 128u * i1);
-      const uint32_t v0 = q8[i0], v1 = q8[i1];
+      const uint32_t v0 = q8[i0], v1 = has1 ? q8[i1] : 0u;
       asum += v0 + v1;
       const __m256i av = _mm256_set1_epi16(static_cast<short>(v0 | (v1 << 8)));
       QS4_PAIR()
     }
-    QS4_FLUSH_ALL()
-  }
-  if (nnz & 1) {  // tail column paired with itself, second act byte = 0
-    const uint32_t i0 = idx[nnz - 1];
-    const __m256i* c0 = reinterpret_cast<const __m256i*>(cols + 128u * i0);
-    const __m256i* c1 = c0;
-    const uint32_t v0 = q8[i0];
-    asum += v0;
-    const __m256i av = _mm256_set1_epi16(static_cast<short>(v0));
-    QS4_PAIR()
     QS4_FLUSH_ALL()
   }
   return static_cast<int32_t>(7u * asum);
@@ -489,6 +481,7 @@ int qsparse_make_idx(const uint8_t* q8, int n, uint16_t* idx) {
         _mm256_cmpeq_epi8(v, _mm256_setzero_si256())));
     uint32_t m = ~zm;
     if (b == nblk - 1 && (n & 31)) m &= (1u << (n & 31)) - 1;
+    if (!m) continue;
     for (int k = 0; k < 4; k++) {
       const uint32_t m8 = (m >> (8 * k)) & 0xFF;
       __m128i lut = _mm_loadl_epi64(

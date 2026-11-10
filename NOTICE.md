@@ -126,23 +126,24 @@ as `cmix-neif-1.0` and then as `cmix-neif-2.0`, and subsequently optimized and
 released in November 2026 as **`cmix-neif-3.1`** by **Oleksandr Dreval**
 (<https://github.com/OleksandrDreval>, repository
 <https://github.com/OleksandrDreval/cmix-neif-3.1>, Copyright (C) 2026 Oleksandr
-Dreval, `GPL-3.0-only`; see `AUTHORS`, `CHANGES.md`, `en-optimization_report_it_1.md`..`en-optimization_report_it_6.md`,
-and `uk-optimization_report_it_1.md`..`uk-optimization_report_it_6.md`). The changes of `cmix-neif-2.0` concern
+Dreval, `GPL-3.0-only`; see `AUTHORS`, `CHANGES.md`, `en-optimization_report_it_1.md`..`en-optimization_report_it_7.md`,
+and `uk-optimization_report_it_1.md`..`uk-optimization_report_it_7.md`). The changes of `cmix-neif-2.0` concern
 the semantic cache SEMCACHE, the census pages and their metadata block, the
 start of the text and reversible rules on the page text, the pre-trained
 transformer and BITLSTM, the mixer and the PPMd model, and the packer of the
 archive; the latest modifications of `cmix-neif-3.1` by Oleksandr Dreval concern
 the `systrap`-safe self-extracting stub, stage-1 bootstrap CM re-tuning, and
 single-pass forward `cm_compress_k` packer (`1.51 GiB` peak RSS, `~38.0 s`), the
-`.c5` multi-model probability-mixed + 100 % Stream A `{0, ±2, ±4, ±7}` grid
-coverage + pre-snap 4-bit scale mantissa quantization + coupled `mlp.up`/`mlp.down`
-(`blocks.0..15`), KDA gate (`forget_gate_projection`, `output_gate_projection`),
+`.c5` split-Dirichlet multi-model probability-mixed + 100 % Stream A `{0, ±2, ±4, ±7}` grid
+coverage + pre-snap 4-bit scale mantissa quantization + continuous-target $\alpha$-rescaled
+coupled `mlp.up`/`mlp.down` (`blocks.0..15`), KDA gate (`forget_gate_projection`, `output_gate_projection`),
 `attention.{query,key,value,output}_projection`, and `embedding.*` / `value_embeddings`
-/ `prior_embedding` Lagrangian Rate-Distortion & analytical $\text{ReLU}^2$/linear covariance-compensated
-`qat-snap` weight codec and re-encoded `3,043,805 B` container (`tailB = 0 B`,
-`-1,401,648 B` in `S`, `-408 KiB` `ModelleId` RAM), 100 % IEEE-754 bit-exact frozen `BITLSTM` active-cell AVX2
+/ `prior_embedding` multi-candidate Lagrangian Rate-Distortion & analytical $\text{ReLU}^2$/linear covariance-compensated
+`qat-snap` weight codec and re-encoded `2,789,635 B` container (`tailB = 0 B`,
+`-1,909,988 B` in `S`, `-792 KiB` `ModelleId` RAM), 100 % IEEE-754 bit-exact frozen `BITLSTM` active-cell AVX2
 execution (`Dot16Preloaded` / `Dot32Preloaded`) with slot-1 rounding and
 single-byte `(e_code << 4) | s` `kBlobW[24669]` packing (`-24,489 B` `.rodata`),
+`tf1` SIMD kernel deduplication and zero-block fast-paths (`qmat_dense.cpp`, `qmat_sparse.cpp`),
 `PPMd` + demand-paged `SEMCACHE` / `word_label` / `arena` ~2.86x RAM reduction,
 decompressor/postprocessor memory-safety & `~161 MiB` peak heap reduction and
 vectorized `memchr`/`memmem` I/O fast-paths, SIMD kernels, and build cleanliness.
