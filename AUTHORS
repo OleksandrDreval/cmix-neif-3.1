@@ -35,30 +35,34 @@ SPDX-License-Identifier: GPL-3.0-only
        `tools_src/packer/build_packer.sh`, `build_and_construct_comp.sh`).
     2. Lossless `.c5` transformer weight container entropy-coding upgrades
        (Sign-Magnitude `ENC_INT4W`, per-canonical-name probability tables,
-       16-bucket node-aware width context `b`, 5-way integer probability mixing
-       (`>> 5`) at each `ENC_INT4W` binary tree node `1..7` combining `p_tree`,
+       16-bucket node-aware width context `b`, 4-way integer probability mixing
+       (`>> 5`) at each `ENC_INT4W` binary tree node combining `p_tree`,
        2D spatial context `p_2d` with RoPE parity `k & 1`, 3D spatial context
-       `p_3d`, Bayesian row-column posterior `p_rc`, and leaf-node QAT off-grid
-       rate `p_grid`; 4-way integer probability mixing for `ENC_INT4W` signs
-       combining `sign_int4w`, `sign_2d`, `sign_rc`, and continuous
-       magnitude-weighted positive-dipole posterior `p_src` with full Lehmer
-       Stream-B absorption `tailB = 0 B`; order-1 `prev_hi` `CountNode` tree
-       mixing and per-`ci` + row-$L_2$-energy-bucket (`ENC_BF16C`) / column-bucket
-       (`ENC_F32HC`) + shared low-byte `uint16_t` shift-tree mixing; header
-       byte-role mixing `cm_role[8 * 256]`, adaptive order-2/1/0 `cname`
-       character tree mixing, per-`ci` `prev_z`-conditioned zero-row and
-       `prev_g`-conditioned QAT-grid-row `gbit` (`zr_ctx[kNamenN * 4]`) mixing
-       (skipping the 3rd magnitude tree bit on `{0, ±2, ±4, ±7}` rows); empirical
+       `p_3d`, and Bayesian row-column posterior `p_rc` on a stride-4 2-bit
+       magnitude tree with 100 % Stream A `{0, ±2, ±4, ±7}` grid coverage,
+       eliminating per-row `gbit` flags and saving `~408 KiB` in `ModelleId`;
+       4-way integer probability mixing for `ENC_INT4W` signs combining
+       `sign_int4w`, `sign_2d`, `sign_rc`, and continuous magnitude-weighted
+       positive-dipole posterior `p_src` with full Lehmer Stream-B absorption
+       `tailB = 0 B`; pre-snap 4-bit mantissa quantization (`(val + 8) & 0xFFF0`)
+       and 4-bit `lo`-nibble shift-tree coding for Stream A `ENC_BF16C` and
+       non-key `ENC_F32HC` tensors with order-1 `prev_hi` `CountNode` tree
+       mixing and per-`ci` + row-$L_2$-energy-bucket / column-bucket + shared
+       low-nibble shift-tree mixing; header byte-role mixing `cm_role[8 * 256]`,
+       adaptive order-2/1/0 `cname` character tree mixing, per-`ci`
+       `prev_z`-conditioned zero-row `zr_ctx[kNamenN * 2]` mixing; empirical
        QAT bimodal sparsity priors in `FrischInt4`, cross-tensor warm-start priors
        `CopyWarmCN`, Bayesian column pseudocount `pr_c = 40`, two-stage `bfloat16`
        lo-byte adaptation shifts, `last_zrow` skipping of zero scales and dead KDA
-       `key_convolution.weight` rows, and coupled `mlp.up`/`mlp.down`, KDA gate
-       (`forget_gate_projection`, `output_gate_projection`), and cross-head
-       `output_projection` `{0, ±2, ±4, ±7}` QAT snapping `qat-snap` with
-       feature-Gram $G_{\text{up}}$ coordinate descent, Lehmer re-permutation, and
-       closed-form analytical $\text{ReLU}^2$/linear cross-covariance compensation)
-       and re-encoded `3,352,617 B` container
-       `weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5` (`src/tf1/`, `src/transformer.h`,
+       `key_convolution.weight` rows, and coupled `mlp.up`/`mlp.down` (`blocks.0..15`
+       with full 16-block Lehmer re-permutation), KDA gate (`forget_gate_projection`,
+       `output_gate_projection`), `attention.{query,key,value,output}_projection`
+       (`blocks.0..15`), and `embedding.*` / `value_embeddings.0..3` /
+       `prior_embedding` `{0, ±2, ±4, ±7}` QAT snapping `qat-snap` with
+       feature-Gram $G_{\text{up}}$ coordinate descent and closed-form analytical
+       $\text{ReLU}^2$/linear cross-covariance compensation) and re-encoded
+       `3,043,805 B` container `weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5`
+       (`src/tf1/`, `src/transformer.h`,
        `training/tf/3_train/export/np2/tf1_np_codec.cpp`).
     3. `BITLSTM` slot-1 3-bit mantissa rounding, single-byte `(e_code << 4) | s`
        `kBlobW[24669]` packing (`-24,489 B` `.rodata`, `-49.8 %`) with 90-byte
@@ -76,18 +80,18 @@ SPDX-License-Identifier: GPL-3.0-only
        `SEMCACHE` (`MAP_NORESERVE` + `FreeFxcmRest` `munmap` with exact
        `kNLog = 24, kB = 18` SimHash geometry), `word_label` 69 MiB leak fix in
        `FreeFxcmRest()` and `PAGE_REGISTRY_ADD` dangling-pointer removal,
-       decompressor/postprocessor memory-safety & `~54–64 MiB` heap-leak fixes
-       (`komm_transform.h`, `page_form.h`, `phda9_preprocess.h`,
-       `cmtidx_transform.h`, `census_transform.h`, `preprocessor.cpp`,
-       `runner.cpp`, `article_reorder.h`), and 4 KiB demand-paged `arena` /
-       `HugeBuf` allocators, plus 4-row AVX2 unrolling in `SemDotPm1`
-       (`src/models/ppmd*.{h,cpp}`, `src/semantic_cache.h`, `src/predictor.cpp`,
-       `src/word_label.cpp`, `src/runner.cpp`, `src/arena_alloc.h`,
-       `src/tf1/opt/arena_build.cpp`).
+       decompressor/postprocessor memory-safety & `~161 MiB` peak heap reduction
+       (`article_reorder.h`, `komm_transform.h`, `page_form.h`,
+       `phda9_preprocess.h`, `cmtidx_transform.h`, `census_transform.h`,
+       `preprocessor.cpp`, `runner.cpp`, `misc.h` vectorized `memchr`/`memmem`
+       I/O), and 4 KiB demand-paged `arena` / `HugeBuf` allocators, plus 4-row
+       AVX2 unrolling in `SemDotPm1` (`src/models/ppmd*.{h,cpp}`,
+       `src/semantic_cache.h`, `src/predictor.cpp`, `src/word_label.cpp`,
+       `src/runner.cpp`, `src/arena_alloc.h`, `src/tf1/opt/arena_build.cpp`).
     5. Compiler warning cleanups and PGO diagnostic flags across `src/` and
        `makefile`, plus analytical/benchmark documentation
-       (`en-optimization_report_it_1.md`..`en-optimization_report_it_5.md`,
-       `uk-optimization_report_it_1.md`..`uk-optimization_report_it_5.md`,
+       (`en-optimization_report_it_1.md`..`en-optimization_report_it_6.md`,
+       `uk-optimization_report_it_1.md`..`uk-optimization_report_it_6.md`,
        `CHANGES.md`, `NOTICE.md`, `README.md`, `training/`).
 
 No copyright claim is made by Oleksandr Dreval over inherited upstream code;

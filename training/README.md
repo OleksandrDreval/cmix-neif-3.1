@@ -17,13 +17,17 @@ decompressor. It serves reproducibility and attribution for `cmix-neif-3.1`
    rerun bit-exactly and what cannot.
 2. **Attribution.** In **`cmix-neif-3.1`**, **Oleksandr Dreval**
    (<https://github.com/OleksandrDreval>) upgraded the `.c5` probability codec
-   (including per-row `{0, ±2, ±4, ±7}` QAT-grid flag `gbit`) and applied coupled
-   `mlp.up`/`mlp.down` `{0, ±2, ±4, ±7}` QAT snapping with feature-Gram $G_{\text{up}}$
-   coordinate descent, Lehmer `std::memcmp`-order-preserving prefix snapping, and
-   closed-form analytical $\text{ReLU}^2$ cross-covariance compensation (`qat-snap`) to
+   (including 100 % Stream A `{0, ±2, ±4, ±7}` QAT-grid coverage on a stride-4
+   2-bit magnitude tree and 4-bit scale mantissa quantization) and applied coupled
+   `mlp.up`/`mlp.down` (`blocks.0..15` with full 16-block Lehmer re-permutation),
+   KDA gate (`forget_gate_projection`, `output_gate_projection`),
+   `attention.{query,key,value,output}_projection`, and `embedding.*` /
+   `value_embeddings` / `prior_embedding` `{0, ±2, ±4, ±7}` QAT snapping with
+   feature-Gram $G_{\text{up}}$ coordinate descent and closed-form analytical
+   $\text{ReLU}^2$/linear cross-covariance compensation (`qat-snap`) to
    re-encode the `.c5` transformer weight container
    (`tf/3_train/export/np2/tf1_np_codec.cpp`, from `3,744,629 B` to
-   `3,352,617 B`, `-392,012 B` per copy / `-784,024 B` in `S`) and rounded slot-1
+   `3,043,805 B`, `-700,824 B` per copy / `-1,401,648 B` in `S`) and rounded slot-1
    mantissas + packed
    `kBlobW[24669]` via single-byte `(e_code << 4) | s` encoding of `BITLSTM`
    (`../src/bit_head_weights.h`, `-24,489 B` `.rodata`, `-49.8 %`)
@@ -72,8 +76,8 @@ training package: 488,038,367 tokens, 203,023,960,672 B of priors
 checkpoint (.tch) --> reference weight file (.bin) + manifest (.bin.json)
   |
   v (e) export at window 2048: bf16 rounding, v3, dead neurons, collapsed   tf/3_train/export/
-  |     rows zeroed, v4, v5, NP2 + cmix-neif-3.1 probability/zrow/gbit + qat-snap upgrades
-weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5  3,573,643 B, sha256 4081c9ad...
+  |     rows zeroed, v4, v5, NP2 + cmix-neif-3.1 probability/zrow + qat-snap upgrades
+weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5  3,043,805 B, sha256 1397bda4...
          (re-encoded from 3,744,629 B, sha256 729694cb... in 2.0;
                                                   appended to both executables)
 
@@ -345,7 +349,7 @@ configurations (`window_size`).
 | zeroing of collapsed attention rows, format v4 | `export4/convert_container_v4.py` | 3,769,904 B, sha256 `38b7c162…` |
 | format v5 (entropy coding of the weights) | `export4/convert_container_v5.py` | 3,767,643 B, sha256 `11ef8fdf…` |
 | format NP2 (order of interchangeable neuron groups coded by their permutation; dead key dimensions of the KDA layers zeroed) | `export/np2/np2_container.py np <v5> <out> k fw np2 dead` | 3,744,629 B, sha256 `729694cba4969b7d833686ed3f597ff04d3b226da849d5f8004ec020a0ed9563` |
-| format NP2 (`cmix-neif-3.1` probability mixing + `gbit` + coupled `mlp`/`gate`/`o` `qat-snap`) | `export/np2/tf1_np_codec qat-snap <in.c5> <out.c5>` | 3,352,617 B, sha256 `3b19418f5abd22dad7a3fdbeceb6ecce8742caf59a13812b00be15e066bdc316` |
+| format NP2 (`cmix-neif-3.1` probability mixing + 100 % Stream A grid + unconditional 4-bit scale/f32 mantissas + Lagrangian RDO & coupled `qat-snap`) | `export/np2/tf1_np_codec qat-snap <in.c5> <out.c5>` | 3,043,805 B, sha256 `1397bda44019b8470e22dcfc496860e881e0e060c5f69f65b908bb9c8e3afc33` |
 
 `export4/export.sh` runs the second to fourth step; when no neuron is dead it
 passes the container on unchanged. For this package the steps from the

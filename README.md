@@ -7,7 +7,7 @@
 * Fork base: `cmix-lex`
 * Previous versions: `cmix-neif-2.0` (Marcus Wölk, 30 October 2026) and `cmix-neif-1.0` (Marcus Wölk, 5 October 2026, <https://github.com/marwoelk/cmix-neif-1.0>)
 
-`cmix-neif-3.1` preserves the complete compression pipeline of `cmix-neif-2.0` while applying five iterations of surgical, zero-retraining optimizations by **Oleksandr Dreval** (documented in `CHANGES.md`, `en-optimization_report_it_1.md`..`en-optimization_report_it_5.md`, and `uk-optimization_report_it_1.md`..`uk-optimization_report_it_5.md`): (1) fixing the self-extracting stub warm-up copy order for user-space syscall interception (`systrap`), re-tuning stage-1 bootstrap CM weights, and introducing single-pass forward `cm_compress_k` (`K = a.outn + 4` at `i == nd`) packing (`9.12 GiB` -> `1.51 GiB` peak packer RSS, `~38.0 s`, zero unpacker runs), (2) Sign-Magnitude / per-tensor context / 16-bucket node-aware width context `b` / 5-way `ENC_INT4W` magnitude probability mixing (`p_tree`, 2D/3D spatial contexts with RoPE parity `k & 1`, Bayesian row-column posterior `p_rc`, leaf QAT off-grid rate `p_grid` on `(p_tree + p_rc) >> 1`) / per-row QAT-grid flag `gbit` (`zr_ctx[kNamenN * 4]`) skipping the 3rd magnitude tree level (`bit_k = 0`) on `{0, ±2, ±4, ±7}` rows / 4-way `ENC_INT4W` sign mixing with magnitude-weighted positive-dipole posterior (`tailB = 0 B` full Lehmer Stream-B absorption) / `ENC_BF16C` row-$L_2$-energy-bucket & `ENC_F32HC` column-bucket `prev_hi` & lo-byte mixing / header byte-role & adaptive `cname` mixing / QAT-prior / cross-tensor warm-start / `last_zrow` + coupled exact-$L_2^2$-norm feature-Gram `mlp.up` (`blocks.4..15`), closed-form analytical $\text{ReLU}^2$ cross-covariance-compensated `mlp.down` (`blocks.2..15` with exact $s_{\text{up}, j}^2$ scaling), coupled linear-bottleneck KDA gate projections (`blocks.2..15` `forget_gate_projection.{up,down}`, `output_gate_projection.{up,down}`), and channel-weighted cross-head `output_projection` (`blocks.8..15`) snapping onto the true 4-level QAT grid `{0, ±2, ±4, ±7}` with Lehmer re-permutation (`qat-snap`, `3,744,629 B` -> **`3,352,617 B`**, **`-392,012 B` per copy / `-784,024 B` in `S`**), (3) slot-1 3-bit mantissa rounding, single-byte `(e_code << 4) | s` `kBlobW[24669]` packing (`49,158 B` -> `24,669 B`, `-24,489 B` `.rodata`, `-49.8 %`) with 90-byte exception tail, pruning of 39 dead training fields from `struct Head`, dead-code pruning, and a 100 % IEEE-754 bit-exact frozen active-cell AVX2 fast-path (`H = kSlotH[slot]`: `Dot16Preloaded` for slot 0 and `Dot32Preloaded` for slots 1–2 + transposed non-FMA `hidP`) in `BITLSTM`, (4) ~2.86x runtime peak RAM reduction (`9.77 GiB` -> `~3.34 GiB`) across the `PPMd` page pool (`zonen_textrahmen` 4 MiB fix, removal of phantom `+2.12 GiB` `ppmd_page::raum` pre-charge, demand-paged `memfd`), single-mapping demand-paged `SEMCACHE` (`MAP_NORESERVE` + `FreeFxcmRest` `munmap` with exact `kNLog = 24, kB = 18` SimHash geometry), `word_label` 69 MiB memory-leak fix and `PAGE_REGISTRY_ADD` cleanup, decompressor/postprocessor memory-safety & `~54–64 MiB` heap-leak fixes (`komm_transform.h`, `page_form.h`, `phda9_preprocess.h`, `cmtidx_transform.h`, `census_transform.h`, `preprocessor.cpp`, `runner.cpp`, `article_reorder.h`), and 4 KiB demand-paged `arena` / `HugeBuf` allocators plus AVX2 vectorization in `SemDotPm1` and `mixer_precond`, and (5) compiler warning and PGO diagnostic cleanups across `src/` and `makefile`. Sections 3 and 4 below retain the upstream `cmix-neif-2.0` architectural documentation and measurements against `cmix-neif-1.0`.
+`cmix-neif-3.1` preserves the complete compression pipeline of `cmix-neif-2.0` while applying six iterations of surgical, zero-retraining optimizations by **Oleksandr Dreval** (documented in `CHANGES.md`, `en-optimization_report_it_1.md`..`en-optimization_report_it_6.md`, and `uk-optimization_report_it_1.md`..`uk-optimization_report_it_6.md`): (1) fixing the self-extracting stub warm-up copy order for user-space syscall interception (`systrap`), re-tuning stage-1 bootstrap CM weights, and introducing single-pass forward `cm_compress_k` (`K = a.outn + 4` at `i == nd`) packing (`9.12 GiB` -> `1.51 GiB` peak packer RSS, `~38.0 s`, zero unpacker runs), (2) Sign-Magnitude / per-tensor context / 16-bucket node-aware width context `b` / 4-way `ENC_INT4W` magnitude probability mixing (`p_tree`, 2D/3D spatial contexts with RoPE parity `k & 1`, Bayesian row-column posterior `p_rc`) on a stride-4 2-bit magnitude tree (`100 %` Stream A `{0, ±2, ±4, ±7}` QAT-grid coverage across all 39,046 non-zero rows of all 154 `ENC_INT4W` Stream A tensors, eliminating per-row `gbit` flags and saving `~408 KiB` in `ModelleId`) / 4-way `ENC_INT4W` sign mixing with magnitude-weighted positive-dipole posterior (`tailB = 0 B` full Lehmer Stream-B absorption) / pre-snap 4-bit mantissa quantization (`(val + 8) & 0xFFF0`) & unconditional 4-bit `lo`-nibble shift-tree coding (`nbits = 4`) across all Stream A `ENC_BF16C` (`*.weight.scale`) and `ENC_F32HC` tensors (including `query_convolution.weight` via collision-free 4-bit `lo` rounding + Lehmer re-permutation across `key_dims.h{0,1,2}`) with row-$L_2$-energy-bucket & column-bucket `prev_hi`/`lo` mixing / header byte-role & adaptive `cname` mixing / QAT-prior / cross-tensor warm-start / `last_zrow` + coupled exact-$L_2^2$-norm feature-Gram `mlp.up` (`blocks.0..15` with full 16-block Lehmer re-permutation), closed-form analytical $\text{ReLU}^2$ cross-covariance-compensated `mlp.down` (`blocks.0..15` with exact $s_{\text{up}, j}^2$ scaling), Lagrangian Rate-Distortion / SparseGPT coordinate descent (`c247` + MDL rate penalty $R(w) \in \{0.0, 2.1, 3.4, 4.0\}\text{ bits}$, $\lambda_{\text{up}} = 0.85$, $\lambda_{\text{dn}} = 0.65 \cdot \bar{C}_{\text{ReLU}^2}$, which simultaneously shrinks `.c5` by an extra `-33,935 B` per copy and lowers forward-pass cross-entropy by `-0.369 bpb` / `-0.084 bpb` on `prof_input/input` and `-0.605 bpb` / `-0.023 bpb` on `prof_input/input2` vs. the unquantized reference!), coupled linear-bottleneck KDA gate projections (`blocks.0..15` `forget_gate_projection.{up,down}`, `output_gate_projection.{up,down}`), channel-weighted `attention.{query,key,value,output}_projection` (`blocks.0..15`), and `embedding.*` / `value_embeddings.0..3` / `prior_embedding` snapping onto the true 4-level QAT grid `{0, ±2, ±4, ±7}` (`qat-snap`, `3,744,629 B` -> **`3,043,805 B`**, **`-700,824 B` per copy / `-1,401,648 B` in `S`**), (3) slot-1 3-bit mantissa rounding, single-byte `(e_code << 4) | s` `kBlobW[24669]` packing (`49,158 B` -> `24,669 B`, `-24,489 B` `.rodata`, `-49.8 %`) with 90-byte exception tail, pruning of 39 dead training fields from `struct Head`, dead-code pruning, and a 100 % IEEE-754 bit-exact frozen active-cell AVX2 fast-path (`H = kSlotH[slot]`: `Dot16Preloaded` for slot 0 and `Dot32Preloaded` for slots 1–2 + transposed non-FMA `hidP`) in `BITLSTM`, (4) ~2.86x runtime peak RAM reduction (`9.77 GiB` -> `~3.34 GiB`) across the `PPMd` page pool (`zonen_textrahmen` 4 MiB fix, removal of phantom `+2.12 GiB` `ppmd_page::raum` pre-charge, demand-paged `memfd`), single-mapping demand-paged `SEMCACHE` (`MAP_NORESERVE` + `FreeFxcmRest` `munmap` with exact `kNLog = 24, kB = 18` SimHash geometry), `word_label` 69 MiB memory-leak fix and `PAGE_REGISTRY_ADD` cleanup, decompressor/postprocessor memory-safety & `~161 MiB` peak heap reduction (`article_reorder.h` byte-offset store saving `~105 MiB`, plus `komm_transform.h`, `page_form.h`, `phda9_preprocess.h`, `cmtidx_transform.h`, `census_transform.h`, `preprocessor.cpp`, `runner.cpp`, `misc.h` vectorized `memchr`/`memmem` I/O), and 4 KiB demand-paged `arena` / `HugeBuf` allocators plus AVX2 vectorization in `SemDotPm1` and `mixer_precond`, and (5) compiler warning and PGO diagnostic cleanups across `src/` and `makefile`. Sections 3 and 4 below retain the upstream `cmix-neif-2.0` architectural documentation and measurements against `cmix-neif-1.0`.
 
 ## The Hutter Prize
 
@@ -44,15 +44,15 @@ memory and using at most 100 GB of temporary disk.
 
 ### Verified `cmix-neif-3.1` improvements against `cmix-neif-2.0` (Oleksandr Dreval)
 
-| metric / component | `cmix-neif-2.0` baseline | `cmix-neif-3.1` (Iter 5) | delta / effect |
+| metric / component | `cmix-neif-2.0` baseline | `cmix-neif-3.1` (Iter 6) | delta / effect |
 |---|---:|---:|---:|
-| `.c5` transformer weight container (single / doubled in `S`) | 3,744,629 B / 7,489,258 B | **3,352,617 B** / **6,705,234 B** | **-392,012 B** per copy / **-784,024 B in `S`** (`-160,154 B` / `-320,308 B` vs Iter 4; `tailB = 0 B`, `K = 20,277 B`, FNV-1a-64 `0x0f529cc2f5ed6a5a`) |
-| `BITLSTM` `kBlobW` `.rodata` & stripped ELF (`Nf` / `Nd`) | 49,158 B (`619,918` / `538,880` B) | **24,669 B** (`602,686` / `521,408` B) | **-24,489 B `kBlobW` (-49.8 %)** / **-17,232 B ELF** (`-17,776 B` vs Iter 3) |
-| Packed compressor + decompressor (`cmix_orig + .decomp_bin`) | 395,323 B (211,438 + 183,885) | **397,317 B** (212,440 + 184,877) | `+1,994 B in S` (includes multi-model `.c5` decoder & decompressor safety/cleanup fixes yielding `-784,024 B` in `.c5`) |
-| Shipped `comp9` / projected `S = comp9 + archive9` | 4,042,564 B / 93,388,956 B | **3,651,554 B** / **92,606,905 B** | **-391,010 B** on `comp9` (`sha256 06e456b5...`) / **-782,051 B in `S`** (`-320,108 B` vs Iter 4; `-756,581 B` vs Iter 3) |
-| Peak resident set (RAM) on full `enwik9` | 9.77 GiB (9,770 MiB) | **~3.34 GiB (3,420 MiB)** | **2.86x lower RAM** (-6.20 GiB; `-54..64 MiB` postprocessor heap before `sort()`) |
-| Packer build peak RSS & single-pass time (`build_packer.sh`) | 9.12 GiB / >300 s (`systrap` trap) | **1.51 GiB (1,543 MiB)** / **~38.0 s** (`202.0 s` full `build.sh`) | **6.05x lower build RAM**, `4.06x` faster vs Iter 2, `systrap`-safe |
-| Single-core coding / decoding speed (representative slices) | baseline (1.00x) | **+10.8 % to +11.5 % faster** (`~2.7x` faster `BITLSTM` slot 0 + faster `loadFile`) | 100 % round-trip bit-identical |
+| `.c5` transformer weight container (single / doubled in `S`) | 3,744,629 B / 7,489,258 B | **3,043,805 B** / **6,087,610 B** | **-700,824 B** per copy / **-1,401,648 B in `S`** (`-308,812 B` / `-617,624 B` vs Iter 5; `tailB = 0 B`, `K = 20,277 B`, FNV-1a-64 `0x00be37cea8109f47`) |
+| `BITLSTM` `kBlobW` `.rodata` & stripped ELF (`Nf` / `Nd`) | 49,158 B (`619,918` / `538,880` B) | **24,669 B** (`601,758` / `520,656` B) | **-24,489 B `kBlobW` (-49.8 %)** / **-18,160 B ELF** (`-18,752 B` vs Iter 3; `-752 B` vs Iter 5) |
+| Packed compressor + decompressor (`cmix_orig + .decomp_bin`) | 395,323 B (211,438 + 183,885) | **396,942 B** (212,244 + 184,698) | `+1,619 B in S` (`-843 B` vs Iter 5; includes multi-model `.c5` decoder & decompressor safety/cleanup fixes yielding `-1,401,648 B` in `.c5`) |
+| Shipped `comp9` / projected `S = comp9 + archive9` | 4,042,564 B / 93,388,956 B | **3,342,546 B** / **91,988,814 B** | **-700,018 B** on `comp9` (`sha256 a6afbde2...`) / **-1,400,142 B in `S`** (`-618,965 B` vs Iter 5; `-1,376,858 B` vs Iter 3) |
+| Peak resident set (RAM) on full `enwik9` | 9.77 GiB (9,770 MiB) | **~3.34 GiB (3,420 MiB)** | **2.86x lower RAM** (-6.20 GiB; `-161 MiB` preprocessor/postprocessor heap & `-408 KiB` `ModelleId`) |
+| Packer build peak RSS & single-pass time (`build_packer.sh`) | 9.12 GiB / >300 s (`systrap` trap) | **1.51 GiB (1,543 MiB)** / **~38.0 s** (`201.0 s` full `build.sh`) | **6.05x lower build RAM**, `4.06x` faster vs Iter 2, `systrap`-safe |
+| Single-core coding / decoding speed (representative slices) | baseline (1.00x) | **+11.2 % to +12.0 % faster** (`~2.7x` faster `BITLSTM` slot 0 + vectorized `memchr`/`memmem` I/O) | 100 % round-trip bit-identical |
 
 ### Upstream `cmix-neif-2.0` full `enwik9` reference run (baseline)
 
@@ -61,7 +61,7 @@ memory and using at most 100 GB of temporary disk.
 | `archive9`, self-extracting | 89,346,392 B |
 | `comp9`, the compressor | 4,042,564 B |
 | `comp9.args`, the command-line options of the compression run | 0 B (the compressor is started as `./comp9`, section 1.4) |
-| **S = `comp9` + `archive9` + `comp9.args` (`2.0` baseline)** | **93,388,956 B** *(before `-782,051 B` weight/code/packer savings in `cmix-neif-3.1` -> **`92,606,905 B`**)* |
+| **S = `comp9` + `archive9` + `comp9.args` (`2.0` baseline)** | **93,388,956 B** *(before `-1,400,142 B` weight/code/packer savings in `cmix-neif-3.1` -> **`91,988,814 B`**)* |
 | margin `(L-S)/L` (`2.0` baseline) | 7.01 % against the last awarded record, `fx2-cmix-transformer` (Vladimir Ivanov, submitted 24 July 2026, awarded 30 September 2026, L = 100,424,672 B); 2.63 % against `cmix-neif-1.0` (submitted 5 October 2026, S = 95,914,051 B) and 1.39 % against `cmix-neif-beehive` (Vladimir Malinovskii, submitted 23 October 2026, S = 94,705,591 B as stated in its submission) |
 | wall clock (`2.0` baseline, section 1.2) | compression 49.18 h, decompression 49.3 h |
 | peak resident set | **`~3.34 GiB` in `cmix-neif-3.1`** (reduced from 9.77 GiB compression / 9.75 GiB decompression in `cmix-neif-2.0`) |
@@ -70,10 +70,11 @@ memory and using at most 100 GB of temporary disk.
 | Geekbench 5 single core, `T` | 1,284, limit 70,000/T = 54.52 h for each program (section 1.2) |
 | sha256 `comp9` / `archive9` (`2.0` reference) | 976bf2d309707ab555e0c92720da5508ff0e5e6b846fc7082234262b06767f82 / 88dd7087404122d010261e6855afd88875d34dde1f0539377d3e832fc0f6b3fd |
 
-The transformer weights are a compressed container of 3,352,617 B in `cmix-neif-3.1`
-(re-encoded with multi-model probability mixing, per-row `gbit`, and coupled
-analytical $\text{ReLU}^2$/linear covariance-compensated `qat-snap` from 3,744,629 B in `cmix-neif-2.0`;
-sha256 `3b19418f5abd22dad7a3fdbeceb6ecce8742caf59a13812b00be15e066bdc316`). It is
+The transformer weights are a compressed container of 3,043,805 B in `cmix-neif-3.1`
+(re-encoded with multi-model probability mixing, 100 % Stream A `{0, ±2, ±4, ±7}` grid
+coverage, unconditional 4-bit scale/f32 mantissa quantization, and Lagrangian Rate-Distortion
+plus coupled analytical $\text{ReLU}^2$/linear covariance-compensated `qat-snap` from 3,744,629 B in `cmix-neif-2.0`;
+sha256 `1397bda44019b8470e22dcfc496860e881e0e060c5f69f65b908bb9c8e3afc33`). It is
 appended to both executables and therefore counts twice in `S`; each program
 writes it out of its own image at start-up. The three weight sets of BITLSTM,
 24,579 weights in bfloat16 (packed into 24,669 B in `kBlobW` via single-byte
@@ -1227,11 +1228,13 @@ en-optimization_report_it_2.md  Iteration 2 analytical & empirical report for cm
 en-optimization_report_it_3.md  Iteration 3 analytical & empirical report for cmix-neif-3.1 (English)
 en-optimization_report_it_4.md  Iteration 4 analytical & empirical report for cmix-neif-3.1 (English)
 en-optimization_report_it_5.md  Iteration 5 analytical & empirical report for cmix-neif-3.1 (English)
+en-optimization_report_it_6.md  Iteration 6 analytical & empirical report for cmix-neif-3.1 (English)
 uk-optimization_report_it_1.md  Iteration 1 analytical & empirical report for cmix-neif-3.1 (Ukrainian)
 uk-optimization_report_it_2.md  Iteration 2 analytical & empirical report for cmix-neif-3.1 (Ukrainian)
 uk-optimization_report_it_3.md  Iteration 3 analytical & empirical report for cmix-neif-3.1 (Ukrainian)
 uk-optimization_report_it_4.md  Iteration 4 analytical & empirical report for cmix-neif-3.1 (Ukrainian)
 uk-optimization_report_it_5.md  Iteration 5 analytical & empirical report for cmix-neif-3.1 (Ukrainian)
+uk-optimization_report_it_6.md  Iteration 6 analytical & empirical report for cmix-neif-3.1 (Ukrainian)
 ERRORS.md                       the error codes E<n> and their texts
 LICENSE                     GNU General Public License, version 3 (SPDX: GPL-3.0-only, OSI-approved)
 NOTICE.md                   provenance and descent notice
@@ -1331,38 +1334,41 @@ are archived at <https://marwoelk.de/cmix-neif-2.0/>.
 
 `cmix-neif-3.1` (<https://github.com/OleksandrDreval/cmix-neif-3.1>, authored by
 **Oleksandr Dreval**, <https://github.com/OleksandrDreval>) focuses on surgical,
-zero-retraining systems and entropy-coding optimizations across four iterations on
+zero-retraining systems and entropy-coding optimizations across six iterations on
 top of `cmix-neif-2.0`: making the custom two-stage x86-CM self-extractor
 compatible with user-space syscall interception (`systrap`), re-tuning stage-1
 bootstrap CM weights, and introducing single-pass forward `cm_compress_k`
 packing (`9.12 GiB` -> `1.51 GiB` peak RSS, `~38.0 s`, `4.06x` faster vs Iter 2,
 zero unpacker executions); shrinking the `.c5` transformer weight
-container from `3,744,629 B` to `3,573,643 B` (`-170,986 B` per copy, `-341,972 B`
-in `S`) via Sign-Magnitude coding, per-tensor context tables,
-16-bucket node-aware width contexts, 5-way `ENC_INT4W` magnitude probability
+container from `3,744,629 B` to **`3,043,805 B`** (`-700,824 B` per copy,
+`-1,401,648 B` in `S`) via Sign-Magnitude coding, per-tensor context tables,
+16-bucket node-aware width contexts, 4-way `ENC_INT4W` magnitude probability
 mixing (`p_tree`, 2D/3D spatial contexts with RoPE parity `k & 1`, Bayesian
-row-column posterior `p_rc`, leaf QAT off-grid rate `p_grid`), per-row QAT-grid
-flag `gbit` (`zr_ctx[kNamenN * 4]`) skipping the 3rd magnitude tree level on
-`{0, ±2, ±4, ±7}` rows, 4-way `ENC_INT4W` sign mixing with continuous
-magnitude-weighted positive-dipole posterior `p_src`, row-$L_2$-bucket
-`ENC_BF16C` and column-conditioned `ENC_F32HC` hi/lo mixing, header byte-role
-and adaptive `cname` character tree mixing, empirical QAT sparsity priors,
-cross-tensor warm starts, `last_zrow` dead-row skipping, and coupled
-exact-$L_2^2$-norm feature-Gram `mlp.up` (`blocks.10..11`) + closed-form
-analytical $\text{ReLU}^2$ cross-covariance-compensated `mlp.down`
-(`blocks.5..15`) snapping onto the true 4-level QAT grid `{0, ±2, ±4, ±7}`;
-unifying `BITLSTM` slot-1 mantissa precision, packing its 24,579 weights into
-24,669 bytes via single-byte `(e_code << 4) | s` encoding (`-24,489 B` `.rodata`,
-`-49.8 %`), pruning 39 dead training fields from `struct Head`, and vectorizing
-its frozen active-cell (`H = kSlotH[slot]`) AVX2 path at `0 ULP` IEEE-754
-bit-exactness (`Dot16Preloaded` / `Dot32Preloaded`); and cutting full-run peak
-RAM nearly threefold (`9.77 GiB` -> `~3.34 GiB`) via demand-paged `PPMd`,
-`SEMCACHE`, `word_label`, and `arena` management. Full mathematical proofs and
-benchmarks are given in `en-optimization_report_it_1.md`,
-`en-optimization_report_it_2.md`, `en-optimization_report_it_3.md`,
-`en-optimization_report_it_4.md`, `uk-optimization_report_it_1.md`,
-`uk-optimization_report_it_2.md`, `uk-optimization_report_it_3.md`, and
-`uk-optimization_report_it_4.md`.
+row-column posterior `p_rc`) on a stride-4 2-bit magnitude tree with 100 %
+Stream A `{0, ±2, ±4, ±7}` grid coverage (eliminating per-row `gbit` flags and
+saving `~408 KiB` in `ModelleId`), 4-way `ENC_INT4W` sign mixing with continuous
+magnitude-weighted positive-dipole posterior `p_src`, pre-snap 4-bit mantissa
+quantization and unconditional 4-bit `lo`-nibble coding across all Stream A `ENC_BF16C` and
+`ENC_F32HC` tensors (including `query_convolution.weight` via collision-free 4-bit `lo` rounding + Lehmer re-permutation) with row-$L_2$-bucket and column-conditioned `prev_hi`/`lo`
+mixing, header byte-role and adaptive `cname` character tree mixing, empirical
+QAT sparsity priors, cross-tensor warm starts, `last_zrow` dead-row skipping,
+Lagrangian Rate-Distortion / SparseGPT coordinate descent (`c247` + MDL rate penalty),
+and coupled exact-$L_2^2$-norm feature-Gram `mlp.up` (`blocks.0..15` with full
+16-block Lehmer re-permutation), closed-form analytical $\text{ReLU}^2$
+cross-covariance-compensated `mlp.down` (`blocks.0..15`), coupled linear-bottleneck
+KDA gates (`blocks.0..15`), channel-weighted `attention.{query,key,value,output}_projection`
+(`blocks.0..15`), and `embedding.*` / `value_embeddings.0..3` / `prior_embedding`
+snapping onto the true 4-level QAT grid `{0, ±2, ±4, ±7}`; unifying `BITLSTM`
+slot-1 mantissa precision, packing its 24,579 weights into 24,669 bytes via
+single-byte `(e_code << 4) | s` encoding (`-24,489 B` `.rodata`, `-49.8 %`),
+pruning 39 dead training fields from `struct Head`, and vectorizing its frozen
+active-cell (`H = kSlotH[slot]`) AVX2 path at `0 ULP` IEEE-754 bit-exactness
+(`Dot16Preloaded` / `Dot32Preloaded`); and cutting full-run peak RAM nearly
+threefold (`9.77 GiB` -> `~3.34 GiB`, plus `-161 MiB` peak preprocessor/postprocessor
+heap and vectorized `memchr`/`memmem` I/O) via demand-paged `PPMd`, `SEMCACHE`,
+`word_label`, and `arena` management. Full mathematical proofs and benchmarks
+are given in `en-optimization_report_it_1.md`..`en-optimization_report_it_6.md`
+and `uk-optimization_report_it_1.md`..`uk-optimization_report_it_6.md`.
 
 ### Upstream `cmix-neif-2.0` note (Marcus Wölk, October 2026)
 
@@ -1413,12 +1419,10 @@ their head. Upstream `cmix-neif-2.0` was prepared from `cmix-neif-1.0`
 (<https://github.com/marwoelk/cmix-neif-1.0>, commit `1c9ea5ed`), and
 `cmix-neif-3.1` (<https://github.com/OleksandrDreval/cmix-neif-3.1>) builds on
 `cmix-neif-2.0`. The modification notices required by GPL-3 section 5a are
-`CHANGES.md`, `AUTHORS`, `en-optimization_report_it_1.md`,
-`en-optimization_report_it_2.md`, `en-optimization_report_it_3.md`,
-`en-optimization_report_it_4.md`, `uk-optimization_report_it_1.md`,
-`uk-optimization_report_it_2.md`, `uk-optimization_report_it_3.md`, and
-`uk-optimization_report_it_4.md` (together with sections 3 and 4 of this file for
-`2.0` against `1.0`). No copyright claim is made over inherited code:
+`CHANGES.md`, `AUTHORS`, `en-optimization_report_it_1.md`..`en-optimization_report_it_6.md`,
+and `uk-optimization_report_it_1.md`..`uk-optimization_report_it_6.md` (together
+with sections 3 and 4 of this file for `2.0` against `1.0`). No copyright claim
+is made over inherited code:
 * **Copyright (C) 2026 Oleksandr Dreval (<https://github.com/OleksandrDreval>)**
   covers the November 2026 `cmix-neif-3.1` modifications and optimization reports;
 * **Copyright (C) 2026 Marcus Wölk (Marcus Woelk)** covers the October 2026
