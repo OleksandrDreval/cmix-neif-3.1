@@ -626,28 +626,27 @@ WeightsFile LoadId(Reader& r, const char* path) {
         m->last_zrow_n = rows;
         int8_t* out = reinterpret_cast<int8_t*>(t.data);
         if (in_A) {
-          static constexpr uint8_t kW2d[4] = {0, 3, 2, 2};
+          static constexpr uint8_t kW2d[4] = {0, 4, 2, 2};
           CountNode* cw = &m->cint4w[ci * 64];
           CountNode* c2 = &m->c2d[ci * 256];
           CountNode* c3 = &m->c3d[ci * 512];
           CountNode* sw = &m->sign_int4w[ci * 128];
           CountNode* s2 = &m->sign_2d[ci * 256];
           CountNode* sr = &m->sign_rc[ci * 256];
+          size_t sc = ci;
           if (cw[0].n0) {
             cw[0].n0 = 0;
             if (m->last_int4_ci >= 0) {
-              size_t lc = size_t(m->last_int4_ci);
-              CopyWarmCN(cw + 1, &m->cint4w[lc * 64 + 1], 63, 4);
-              CopyWarmCN(c2 + 1, &m->c2d[lc * 256 + 1], 255, 4);
-              CopyWarmCN(c3 + 1, &m->c3d[lc * 512 + 1], 511, 4);
-              CopyWarmCN(sw, &m->sign_int4w[lc * 128], 128, 4);
-              CopyWarmCN(s2, &m->sign_2d[lc * 256], 256, 4);
-              CopyWarmCN(sr, &m->sign_rc[lc * 256], 256, 4);
+              sc = size_t(m->last_int4_ci);
+              CopyWarmCN(sw, &m->sign_int4w[sc * 128], 128, 4);
+              CopyWarmCN(s2, &m->sign_2d[sc * 256], 256, 4);
+              CopyWarmCN(sr, &m->sign_rc[sc * 256], 256, 4);
             }
-          } else {
-            CopyWarmCN(cw + 1, cw + 1, 63, 2);
-            CopyWarmCN(c2 + 1, c2 + 1, 255, 2);
-            CopyWarmCN(c3 + 1, c3 + 1, 511, 2);
+          }
+          if (sc != ci || m->last_int4_ci >= 0) {
+            CopyWarmCN(cw + 1, &m->cint4w[sc * 64 + 1], 63, 4);
+            CopyWarmCN(c2 + 1, &m->c2d[sc * 256 + 1], 255, 4);
+            CopyWarmCN(c3 + 1, &m->c3d[sc * 512 + 1], 511, 4);
           }
           m->last_int4_ci = int(ci);
           uint64_t* cs = static_cast<uint64_t*>(std::calloc(cols * 7, sizeof(uint64_t)));
@@ -677,10 +676,10 @@ WeightsFile LoadId(Reader& r, const char* path) {
             uint32_t r_pos = 0;
             uint32_t prev_mag = 0, prev2_mag = 0;
             for (size_t k = 0; k < cols; k++) {
-              uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
+              uint64_t M = (T * 65536 + 16 * 65536) / (N + 16);
               if (M < 1) M = 1;
-              uint64_t rr = (rs * 65536 + 32 * M) / (k + 32);
-              uint64_t cc = (cs[k] * 65536 + 16 * M) / (n + 16);
+              uint64_t rr = (rs * 65536 + 6 * M) / (k + 6);
+              uint64_t cc = (cs[k] * 65536 + 8 * M) / (n + 8);
               uint64_t w_mag = (rr * cc / M) >> 4;
               uint32_t up_mag = (r0 > 0) ? uint32_t(std::abs(int(row[k - cols]))) : 0;
               uint32_t dg_mag = (r0 > 0 && k > 0) ? uint32_t(std::abs(int(row[k - cols - 1]))) : 0;
@@ -692,7 +691,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
                                     (((dg_mag + ur_mag) > 0 ? 1u : 0u) << 1) | (up_mag > 0 ? 1u : 0u);
               uint32_t node = 1;
               for (int bit_k = 0; bit_k < 2; bit_k++) {
-                constexpr uint64_t dr1 = 128, dc1 = 8, dr2 = 64, dc2 = 16;
+                constexpr uint64_t dr1 = 384, dc1 = 12, dr2 = 64, dc2 = 20;
                 uint64_t t_n1 = t_vis[node] - t_n0[node];
                 uint64_t r_n1 = r_vis[node] - r_n0[node];
                 uint64_t c_n1 = c_vis[node * cols + k] - c_n0[node * cols + k];
@@ -701,7 +700,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
                 uint64_t p1_r = ((r_n1 << 12) + dr1 * p1_t) / (r_vis[node] + dr1);
                 uint64_t p1_c = ((c_n1 << 12) + dc1 * p1_t) / (c_vis[node * cols + k] + dc1);
                 uint64_t w_nd = ((p1_r * p1_c) / p1_t) * 4096ull / p1_t;
-                uint64_t b = (((w_mag + w_nd) >> 1) * 16ull) / (6 * 4096);
+                uint64_t b = (((w_mag + w_nd) >> 1) * 16ull) / 13312;
                 if (b > 15) b = 15;
                 CountNode* cn = &cw[b * 4 + node];
                 CountNode* cn2 = &c2[((uint32_t(b >> 2) << 4) | ctx2d_base) * 4 + node];
@@ -713,8 +712,8 @@ WeightsFile LoadId(Reader& r, const char* path) {
                 uint64_t p_c = (uint64_t(c_n0[node * cols + k]) * 2048ull + dc2 * p_t) / (c_vis[node * cols + k] + dc2);
                 uint64_t p_rc = (p_r * p_c) / p_t;
                 if (p_rc > 2047) p_rc = 2047;
-                uint64_t wt = 22u - kW2d[node];
-                int bit = dec.decode_p(uint32_t((wt * p_tree + kW2d[node] * p_2d + p_3d + 9u * p_rc) >> 5));
+                uint64_t wt = 23u - kW2d[node];
+                int bit = dec.decode_p(uint32_t((wt * p_tree + kW2d[node] * p_2d + p_3d + 8u * p_rc) >> 5));
                 UpdCN(cn, bit, 3071);
                 UpdCN(cn2, bit, 3071);
                 UpdCN(cn3, bit, 3071);
@@ -741,11 +740,11 @@ WeightsFile LoadId(Reader& r, const char* path) {
                 uint32_t ctx3 = (ps & 3u) | ((r_pol & 3u) << 2) | ((c_str & 3u) << 4) | ((up_s & 3u) << 6);
                 uint64_t ps_t = (t_pos * 2048ull + 64ull * 1024ull) / (T + 64ull);
                 if (ps_t < 1) ps_t = 1;
-                uint64_t ps_r = (uint64_t(r_pos) * 2048ull + 256ull * ps_t) / (rs + 256ull);
-                uint64_t ps_c = (uint64_t(c_pos[k]) * 2048ull + 256ull * ps_t) / (cs[k] + 256ull);
+                uint64_t ps_r = (uint64_t(r_pos) * 2048ull + 192ull * ps_t) / (rs + 192ull);
+                uint64_t ps_c = (uint64_t(c_pos[k]) * 2048ull + 192ull * ps_t) / (cs[k] + 192ull);
                 uint64_t p_src = (ps_r * ps_c) / ps_t;
                 if (p_src > 2047) p_src = 2047;
-                int bit = dec.decode_p((12u * ProbCN(&sw[ctx]) + 6u * ProbCN(&s2[ctx2]) + 4u * ProbCN(&sr[ctx3]) + 10u * uint32_t(p_src)) >> 5);
+                int bit = dec.decode_p((11u * ProbCN(&sw[ctx]) + 6u * ProbCN(&s2[ctx2]) + 4u * ProbCN(&sr[ctx3]) + 11u * uint32_t(p_src)) >> 5);
                 UpdCN(&sw[ctx], bit, CNT_LIMIT_SIGN);
                 UpdCN(&s2[ctx2], bit, CNT_LIMIT_SIGN);
                 UpdCN(&sr[ctx3], bit, CNT_LIMIT_SIGN);
@@ -994,7 +993,7 @@ WeightsFile WeightsFile::load_compressed(const char* path) {
 #if !NEIF_TF1_WC5
   unsigned long long h = 14695981039346656037ULL;
   for (size_t i = 0; i < n; i++) h = (h ^ buf[i]) * 1099511628211ULL;
-  if (h != 0xef3bf4aeffc73099ULL)
+  if (h != 0xa5a51638c07d6970ULL)
     msg_stop(207)
 ;
 #endif

@@ -35,15 +35,15 @@ SPDX-License-Identifier: GPL-3.0-only
        `tools_src/packer/build_packer.sh`, `build_and_construct_comp.sh`).
     2. Lossless `.c5` transformer weight container entropy-coding upgrades
        (Sign-Magnitude `ENC_INT4W`, per-canonical-name probability tables,
-       16-bucket node-aware equal-weight density context `b = (w_mag + w_nd) >> 1`,
-       split-Dirichlet priors (`prr=32, pcc=16`, `dr1=128, dc1=8`, `dr2=64, dc2=16`),
+       16-bucket node-aware equal-weight density context `(w_mag + w_nd) >> 1` with `b` divisor `13312` (`M` prior `65536`),
+       split-Dirichlet priors (`prr=6, pcc=8`, `dr1=384, dc1=12`, `dr2=64, dc2=20`, `ps_r=ps_c=192`),
        4-way integer probability mixing (`>> 5`) at each `ENC_INT4W` binary tree
-       node combining `p_tree`, 2D spatial context `p_2d` with RoPE parity `k & 1`,
+       node (`wt = 23 - kW2d[node]`, `kW2d = {0, 4, 2, 2}`, `1/32` 3D, `8/32` `p_rc`) combining `p_tree`, 2D spatial context `p_2d` with RoPE parity `k & 1`,
        3D spatial context `p_3d`, and Bayesian row-column posterior `p_rc` on a
        stride-4 2-bit magnitude tree with 100 % Stream A `{0, ±2, ±4, ±7}` grid
        coverage, eliminating per-row `gbit` flags, inlining `last_zrow[1024]`, and
        shrinking `cname[16384]` to save `~792 KiB` in `ModelleId`; 4-way integer
-       probability mixing (`12:6:4:10`, `sdr=256, sdc=256`) for `ENC_INT4W` signs
+       probability mixing (`11:6:4:11`, `sdr=256, sdc=256`) for `ENC_INT4W` signs
        combining `sign_int4w`, `sign_2d`, `sign_rc`, and continuous
        magnitude-weighted positive-dipole posterior `p_src` with full Lehmer
        Stream-B absorption `tailB = 0 B`; pre-snap 4-bit mantissa quantization
@@ -53,11 +53,11 @@ SPDX-License-Identifier: GPL-3.0-only
        column-bucket + shared low-nibble shift-tree mixing; header byte-role mixing
        `cm_role[8 * 256]`, adaptive order-2/1/0 `cname` character tree mixing,
        per-`ci` `prev_z`-conditioned zero-row `zr_ctx[kNamenN * 2]` mixing;
-       empirical QAT bimodal sparsity priors in `FrischInt4`, cross-tensor
-       warm-start priors `CopyWarmCN`, two-stage `bfloat16` lo-byte adaptation
+       empirical QAT bimodal sparsity priors in `FrischInt4`, faster inter-block cross-tensor
+       warm-start priors `CopyWarmCN` (shift `4`), two-stage `bfloat16` lo-byte adaptation
        shifts, `last_zrow` skipping of zero scales and dead KDA
-       `key_convolution.weight` rows, and continuous-target $\alpha$-rescaled
-       (`\alpha_{\text{up}}=1.24, \alpha_{\text{dn}}=1.19`) coupled `mlp.up`/`mlp.down`
+       `key_convolution.weight` rows, and full-network continuous-target $\alpha$-rescaled
+       (`\alpha_{\text{up}}=1.58, \alpha_{\text{dn}}=1.19, \alpha_{\text{qk}}=1.10, \alpha_{\text{v}}=1.12, \alpha_{\text{o}}=1.00, \alpha_{\text{g}}=1.19, \alpha_{\text{emb}}=1.06`) coupled `mlp.up`/`mlp.down`
        (`blocks.0..15` with full 16-block Lehmer re-permutation), KDA gate
        (`forget_gate_projection`, `output_gate_projection`),
        `attention.{query,key,value,output}_projection` (`blocks.0..15`), and
@@ -65,7 +65,7 @@ SPDX-License-Identifier: GPL-3.0-only
        multi-candidate `{0, ±2, ±4, ±7}` Lagrangian Rate-Distortion QAT snapping
        `qat-snap` with feature-Gram $G_{\text{up}}$ coordinate descent and
        closed-form analytical $\text{ReLU}^2$/linear cross-covariance compensation)
-       and re-encoded `2,789,635 B` container
+       and re-encoded `2,535,202 B` container
        `weights-poc8m_w2048_tf2t3_pruned_v5k_np2.c5` (`src/tf1/`,
        `src/transformer.h`, `training/tf/3_train/export/np2/tf1_np_codec.cpp`).
     3. `BITLSTM` slot-1 3-bit mantissa rounding, single-byte `(e_code << 4) | s`
@@ -75,11 +75,12 @@ SPDX-License-Identifier: GPL-3.0-only
        for slots 1 and 2) 100 % IEEE-754 bit-exact frozen AVX2 inference fast-path
        with transposed non-FMA `hidP` projection and pruning of 39 dead training
        fields from `struct Head` (`src/bit_head_weights.h`, `src/bit_head.cpp`),
-       plus `tf1` SIMD kernel deduplication and zero-block fast-paths
-       (`src/tf1/opt/qmat_dense.cpp`, `src/tf1/opt/qmat_sparse.cpp`), AVX2
+       plus `tf1` SIMD kernel deduplication, zero-block fast-paths, and unified
+       sparse GEMV dispatch (`src/tf1/opt/model_opt.cpp`, `src/tf1/opt/qmat_dense.cpp`,
+       `src/tf1/opt/qmat_sparse.cpp`, shrinking `.decomp_bin` to `183,868 B`), AVX2
        column-scaling in `mixer_precond.cpp`, dead-code pruning (`sse.cpp`,
        `glibc_compat.cpp`, `ppmd_page.{h,cpp}`), and `COLD_SIZE_ATTR` layout.
-    4. ~2.86x peak RAM reduction across the `PPMd` page pool (`zonen_textrahmen`
+    4. ~2.92x peak RAM reduction across the `PPMd` page pool (`zonen_textrahmen`
        `4 MiB` rounding fix, removal of phantom `+2.12 GiB` `ppmd_page::raum`
        pre-accounting, demand-paged `memfd`), single-mapping demand-paged
        `SEMCACHE` (`MAP_NORESERVE` + `FreeFxcmRest` `munmap` with exact
@@ -95,8 +96,8 @@ SPDX-License-Identifier: GPL-3.0-only
        `src/runner.cpp`, `src/arena_alloc.h`, `src/tf1/opt/arena_build.cpp`).
     5. Compiler warning cleanups and PGO diagnostic flags across `src/` and
        `makefile`, plus analytical/benchmark documentation
-       (`en-optimization_report_it_1.md`..`en-optimization_report_it_7.md`,
-       `uk-optimization_report_it_1.md`..`uk-optimization_report_it_7.md`,
+       (`en-optimization_report_it_1.md`..`en-optimization_report_it_8.md`,
+       `uk-optimization_report_it_1.md`..`uk-optimization_report_it_8.md`,
        `CHANGES.md`, `NOTICE.md`, `README.md`, `training/`).
 
 No copyright claim is made by Oleksandr Dreval over inherited upstream code;

@@ -80,9 +80,6 @@ static_assert(WIN <= ATTN_WIN,
               "the ring cannot be wider than the scan.");
 static_assert(WIN % ATTN_BLK == 0 && WIN >= 256,
               "the ring follows the block width of the scan.");
-// density thresholds for the sparse column kernels (qmat.h)
-constexpr int PRIOR_DENSE_NNZ =
-    static_cast<int>(QMAT_SPARSE_DENSITY_THRESHOLD * V);  // 194
 
 // beta projection: 3x192 fp32 matvec on xn. Bit-identical to the naive
 // fx2::dot_f32(xn, w, 192) (same 8-wide fmadd chain + hsum tree).  Out of
@@ -753,13 +750,8 @@ struct TransformerOptImpl : ZRow {
     }
     {
       PSCOPE(PS_MM_MLP_DOWN);
-      for (int j = 0; j < n; j++) {
-        ZRow& w = r[j];
-        if (w.nnz > static_cast<int>(QMAT_SPARSE_DENSITY_THRESHOLD * mm.down.d_in))
-          qsparse4_dense_add(mm.down, w.q768, w.ar_f);
-        else
-          qsparse4_add(mm.down, w.q768, w.idx768, w.nnz, w.ar_f);
-      }
+      for (int j = 0; j < n; j++)
+        qsparse4_add(mm.down, r[j].q768, r[j].idx768, r[j].nnz, r[j].ar_f);
     }
     // The relu^2 code of the last FWK MLPs, on read rows only (fw_gel; then
     // r is this object, n = 1, and fw_apply reads its q768 and idx768).
@@ -782,10 +774,7 @@ struct TransformerOptImpl : ZRow {
     }
     {
       PSCOPE(PS_MM_PRIOR);
-      if (nnzp > PRIOR_DENSE_NNZ)
-        qsparse4_dense_f32(M.prior, q8p, yb);
-      else
-        qsparse4_f32(M.prior, q8p, idxp, nnzp, yb);
+      qsparse4_f32(M.prior, q8p, idxp, nnzp, yb);
     }
     {
       PSCOPE(PS_EL_EMBED);

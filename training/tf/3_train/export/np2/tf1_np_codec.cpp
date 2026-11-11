@@ -394,7 +394,7 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
     case ENC_INT4Q: {
       static const uint8_t kU7[5] = {0, 2, 5, 7, 9};
       static const uint8_t kU3[3] = {0, 7, 14};
-      static constexpr uint8_t kW2d[4] = {0, 3, 2, 2};
+      static constexpr uint8_t kW2d[4] = {0, 4, 2, 2};
       size_t R = e.rows(), C = e.cols();
       if (enc == ENC_INT4W) vm.last_zrow.assign(R, 0);
       else vm.last_zrow.clear();
@@ -422,9 +422,9 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
           CopyWarmCN(sr.data(), vm.sign_rc_cn[vm.last_int4_cn].data(), 256, 4);
         }
       } else if (enc == ENC_INT4W) {
-        CopyWarmCN(cw.data() + 1, cw.data() + 1, 16 * 4 - 1, 2);
-        CopyWarmCN(c2.data() + 1, c2.data() + 1, 64 * 4 - 1, 2);
-        CopyWarmCN(c3.data() + 1, c3.data() + 1, 128 * 4 - 1, 2);
+        CopyWarmCN(cw.data() + 1, cw.data() + 1, 16 * 4 - 1, 4);
+        CopyWarmCN(c2.data() + 1, c2.data() + 1, 64 * 4 - 1, 4);
+        CopyWarmCN(c3.data() + 1, c3.data() + 1, 128 * 4 - 1, 4);
       }
       if (enc == ENC_INT4W) vm.last_int4_cn = cn;
       std::vector<uint64_t> cs(C, 0);
@@ -477,10 +477,10 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
           int v = row[k];
           uint64_t a = uint64_t(v < 0 ? -v : v);
           if (enc == ENC_INT4W) {
-            uint64_t M = (T * 65536 + 16 * 190054) / (N + 16);
+            uint64_t M = (T * 65536 + 16 * 65536) / (N + 16);
             if (M < 1) M = 1;
-            uint64_t rr = (rs * 65536 + 32 * M) / (k + 32);
-            uint64_t cc = (cs[k] * 65536 + 16 * M) / (n + 16);
+            uint64_t rr = (rs * 65536 + 6 * M) / (k + 6);
+            uint64_t cc = (cs[k] * 65536 + 8 * M) / (n + 8);
             uint64_t w_mag = (rr * cc / M) >> 4;
             uint32_t up_mag = (r > 0) ? uint32_t(std::abs(int(row[k - C]))) : 0;
             uint32_t dg_mag = (r > 0 && k > 0) ? uint32_t(std::abs(int(row[k - C - 1]))) : 0;
@@ -493,7 +493,7 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
             uint32_t node = 1;
             for (int bit_k = 2; bit_k >= 1; bit_k--) {
               int bit = (uint32_t(a) >> bit_k) & 1;
-              constexpr uint64_t dr1 = 128, dc1 = 8, dr2 = 64, dc2 = 16;
+              constexpr uint64_t dr1 = 384, dc1 = 12, dr2 = 64, dc2 = 20;
               uint64_t t_n1 = t_vis[node] - t_n0[node];
               uint64_t r_n1 = r_vis[node] - r_n0[node];
               uint64_t c_n1 = c_vis[node * C + k] - c_n0[node * C + k];
@@ -503,7 +503,7 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
               uint64_t p1_c = ((c_n1 << 12) + dc1 * p1_t) / (c_vis[node * C + k] + dc1);
               uint64_t w_nd = ((p1_r * p1_c) / p1_t) * 4096ull / p1_t;
               uint64_t w_comb = (w_mag + w_nd) >> 1;
-              uint64_t b = (w_comb * 16ull) / (6 * 4096);
+              uint64_t b = (w_comb * 16ull) / 13312;
               if (b >= 16) b = 15;
               uint32_t ctx2d = (uint32_t(b >> 2) << 4) | ctx2d_base;
               uint32_t ctx3d = (uint32_t(b >> 2) << 5) | ctx3d_base;
@@ -517,8 +517,8 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
               uint64_t p_c = (uint64_t(c_n0[node * C + k]) * 2048ull + dc2 * p_t) / (c_vis[node * C + k] + dc2);
               uint64_t p_rc = (p_r * p_c) / p_t;
               if (p_rc > 2047) p_rc = 2047;
-              uint64_t wt = 22u - kW2d[node];
-              uint32_t p_final = uint32_t((wt * p_tree + kW2d[node] * p_2d + p_3d + 9u * p_rc) >> 5);
+              uint64_t wt = 23u - kW2d[node];
+              uint32_t p_final = uint32_t((wt * p_tree + kW2d[node] * p_2d + p_3d + 8u * p_rc) >> 5);
               E.encode_p(p_final, bit);
               UpdCN(cn_n, bit, 3071);
               UpdCN(cn2, bit, 3071);
@@ -546,11 +546,11 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
               uint32_t p1 = ProbCN(&sw[ctx]), p2 = ProbCN(&s2[ctx2]), p3 = ProbCN(&sr[ctx3]);
               uint64_t ps_t = (t_pos * 2048ull + 64ull * 1024ull) / (T + 64ull);
               if (ps_t < 1) ps_t = 1;
-              uint64_t ps_r = (uint64_t(r_pos) * 2048ull + 256ull * ps_t) / (rs + 256ull);
-              uint64_t ps_c = (uint64_t(c_pos[k]) * 2048ull + 256ull * ps_t) / (cs[k] + 256ull);
+              uint64_t ps_r = (uint64_t(r_pos) * 2048ull + 192ull * ps_t) / (rs + 192ull);
+              uint64_t ps_c = (uint64_t(c_pos[k]) * 2048ull + 192ull * ps_t) / (cs[k] + 192ull);
               uint64_t p_src = (ps_r * ps_c) / ps_t;
               if (p_src > 2047) p_src = 2047;
-              uint32_t psign = (12u * p1 + 6u * p2 + 4u * p3 + 10u * uint32_t(p_src)) >> 5;
+              uint32_t psign = (11u * p1 + 6u * p2 + 4u * p3 + 11u * uint32_t(p_src)) >> 5;
               E.encode_p(psign, bit);
               UpdCN(&sw[ctx], bit, CNT_LIMIT_SIGN);
               UpdCN(&s2[ctx2], bit, CNT_LIMIT_SIGN);
@@ -1444,7 +1444,7 @@ int main(int argc, char** argv) {
                 argv[3], p.size(), es.size());
     return 0;
   }
-  if (mode == "qat-snap" && (argc >= 4 && argc <= 16)) {
+  if (mode == "qat-snap" && (argc >= 4 && argc <= 28)) {
     const char* in = argv[2];
     const char* out_path = argv[3];
     int min_blk = (argc >= 5) ? std::atoi(argv[4]) : 0;
@@ -1499,10 +1499,22 @@ int main(int argc, char** argv) {
       return f;
     };
     const double kPi = std::acos(-1.0);
-    const double lam_up = (argc >= 11) ? std::atof(argv[10]) : 1.17;
-    const double lam_dn = (argc >= 12) ? std::atof(argv[11]) : 0.97;
-    const double alpha_up = (argc >= 13) ? std::atof(argv[12]) : 1.24;
+    const double lam_up = (argc >= 11) ? std::atof(argv[10]) : 2.18;
+    const double lam_dn = (argc >= 12) ? std::atof(argv[11]) : 1.01;
+    const double alpha_up = (argc >= 13) ? std::atof(argv[12]) : 1.58;
     const double alpha_dn = (argc >= 14) ? std::atof(argv[13]) : 1.19;
+    const double lam_qk = (argc >= 15) ? std::atof(argv[14]) : 0.45;
+    const double alpha_qk = (argc >= 16) ? std::atof(argv[15]) : 1.10;
+    const double lam_v = (argc >= 17) ? std::atof(argv[16]) : 0.60;
+    const double alpha_v = (argc >= 18) ? std::atof(argv[17]) : 1.12;
+    const double lam_o = (argc >= 19) ? std::atof(argv[18]) : 0.20;
+    const double alpha_o = (argc >= 20) ? std::atof(argv[19]) : 1.00;
+    const double lam_g = (argc >= 21) ? std::atof(argv[20]) : 0.95;
+    const double alpha_g = (argc >= 22) ? std::atof(argv[21]) : 1.19;
+    const double lam_emb = (argc >= 23) ? std::atof(argv[22]) : 0.35;
+    const double alpha_emb = (argc >= 24) ? std::atof(argv[23]) : 1.06;
+    const double w_sq_up_k = 3.0, w_sq_g_k = 8.0, w_sq_qk_k = 8.0, w_sq_v_k = 8.0, ridge_o_k = 0.25;
+    const int min_lv_35 = 0;
     auto f32_to_bf16_4bit = [](float f) -> uint16_t {
       uint32_t u;
       std::memcpy(&u, &f, 4);
@@ -1636,6 +1648,7 @@ int main(int argc, char** argv) {
         }
       }
     }
+    #pragma omp parallel for schedule(dynamic)
     for (int blk = min_blk; blk < 16; blk++) {
       std::string up_q_name = "blocks." + std::to_string(blk) + ".mlp.up.weight.q";
       std::string up_s_name = "blocks." + std::to_string(blk) + ".mlp.up.weight.scale";
@@ -1976,7 +1989,129 @@ int main(int argc, char** argv) {
       }
     }
 
+    // Optional RDO on embedding/unembedding/value_embeddings/prior_embedding
+    if (lam_emb > 0.0 || alpha_emb > 1.0) {
+      for (size_t i = 0; i <= last; i++) {
+        if (es[i].dt != DT_I8) continue;
+        if (es[i].name.find("blocks.") == 0) continue;
+        bool is_unemb = (es[i].name == "unembedding.weight.q");
+        double cur_lam_emb = is_unemb ? (1.0 * lam_emb) : lam_emb;
+        double cur_alpha_emb = is_unemb ? (1.0 + 1.0 * (alpha_emb - 1.0)) : alpha_emb;
+        int i_sc = -1;
+        std::string sc_name = es[i].name.substr(0, es[i].name.size() - 2) + ".scale";
+        for (size_t k = 0; k <= last; k++) {
+          if (es[k].name == sc_name) { i_sc = int(k); break; }
+        }
+        if (i_sc < 0) continue;
+        const size_t R = es[i].rows(), C = es[i].cols();
+        if (C < 16) continue;
+        uint16_t* sc_mut = reinterpret_cast<uint16_t*>(es[i_sc].data.data());
+        for (size_t r = 0; r < R; r++) {
+          int8_t* row = reinterpret_cast<int8_t*>(&es[i].data[r * C]);
+          int r_nnz = 0;
+          for (size_t c = 0; c < C; c++) if (row[c]) r_nnz++;
+          if (r_nnz == 0) continue;
+          double inv_alpha = 1.0;
+          if (cur_alpha_emb > 1.0 && es[i_sc].numel() == R) {
+            float sc_orig = bf16_val(sc_mut[r]);
+            uint16_t b_new = f32_to_bf16_4bit(float(sc_orig * cur_alpha_emb));
+            float sc_new = bf16_val(b_new);
+            if (sc_new > 0.0f && sc_orig > 0.0f) inv_alpha = double(sc_orig) / double(sc_new);
+            sc_mut[r] = b_new;
+          }
+          std::vector<int> raw_u(C);
+          std::vector<double> orig_u(C);
+          double sq_orig = 0.0;
+          for (size_t c = 0; c < C; c++) {
+            raw_u[c] = row[c];
+            orig_u[c] = double(row[c]) * inv_alpha;
+            sq_orig += orig_u[c] * orig_u[c];
+          }
+          if (sq_orig <= 0.0) continue;
+          double w_sq = 6.0 / sq_orig, w_dot = 6.0 / sq_orig, w_sum = 1.5 / double(C);
+          double dsq = 0.0, ddot = 0.0, dsum = 0.0;
+          for (size_t c = 0; c < C; c++) {
+            double err0 = double(row[c]) - orig_u[c];
+            dsq += double(row[c]) * row[c] - orig_u[c] * orig_u[c];
+            ddot += err0 * orig_u[c];
+            dsum += err0;
+          }
+          auto eval_cost = [&](size_t c, int v_cur, int v_new) {
+            double dv = v_new - v_cur;
+            double e_cur = v_cur - orig_u[c], e_new = v_new - orig_u[c];
+            double d_sq_new = dsq + (double(v_new) * v_new - double(v_cur) * v_cur);
+            double d_dot_new = ddot + dv * orig_u[c];
+            double d_sum_new = dsum + dv;
+            return (e_new * e_new - e_cur * e_cur)
+                 + w_sq * (d_sq_new * d_sq_new - dsq * dsq)
+                 + w_dot * (d_dot_new * d_dot_new - ddot * ddot)
+                 + w_sum * (d_sum_new * d_sum_new - dsum * dsum)
+                 + cur_lam_emb * (r_bits(v_new) - r_bits(v_cur));
+          };
+          std::vector<size_t> c1, c35, c247;
+          for (size_t c = 0; c < C; c++) {
+            int a = std::abs(raw_u[c]);
+            if (a == 1) c1.push_back(c);
+            else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+            else if (a == 2 || a == 4 || a == 7) c247.push_back(c);
+          }
+          for (size_t c : c1) {
+            int v = row[c], s_u = (raw_u[c] > 0) ? 1 : -1;
+            int vn = (eval_cost(c, v, 2 * s_u) <= eval_cost(c, v, 0)) ? (2 * s_u) : 0;
+            if (vn == 0 && v != 0 && r_nnz <= 1) vn = 2 * s_u;
+            if (vn == 0 && v != 0) r_nnz--;
+            double dv = vn - v;
+            dsq += double(vn) * vn - double(v) * v;
+            ddot += dv * orig_u[c];
+            dsum += dv;
+            row[c] = int8_t(vn);
+          }
+          for (size_t c : c35) {
+            int v = row[c], s_u = (raw_u[c] > 0) ? 1 : -1, a = std::abs(raw_u[c]);
+            int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+            int vn = (eval_cost(c, v, s_u * hi) <= eval_cost(c, v, s_u * lo)) ? (s_u * hi) : (s_u * lo);
+            double dv = vn - v;
+            dsq += double(vn) * vn - double(v) * v;
+            ddot += dv * orig_u[c];
+            dsum += dv;
+            row[c] = int8_t(vn);
+          }
+          auto try_multi_emb = [&](size_t c) {
+            int a = std::abs(raw_u[c]);
+            if (a == 0) return;
+            int s_u = (raw_u[c] > 0) ? 1 : -1, v_cur = row[c];
+            int hi = (a <= 2) ? 2 : ((a <= 4) ? 4 : 7);
+            int lo_min = (min_lv_35 && a >= 5) ? 2 : ((min_lv_35 == 2 && a >= 3) ? 2 : 0);
+            const int levels[4] = {0, 2 * s_u, 4 * s_u, 7 * s_u};
+            int best_v = v_cur;
+            double best_cost = -1e-12;
+            for (int lv : levels) {
+              if (std::abs(lv) > hi || std::abs(lv) < lo_min || lv == v_cur) continue;
+              if (lv == 0 && v_cur != 0 && r_nnz <= 1) continue;
+              double c_lv = eval_cost(c, v_cur, lv);
+              if (c_lv < best_cost) { best_cost = c_lv; best_v = lv; }
+            }
+            if (best_v != v_cur) {
+              if (best_v == 0 && v_cur != 0) r_nnz--;
+              else if (best_v != 0 && v_cur == 0) r_nnz++;
+              double d_alt = best_v - v_cur;
+              dsq += double(best_v) * best_v - double(v_cur) * v_cur;
+              ddot += d_alt * orig_u[c];
+              dsum += d_alt;
+              row[c] = int8_t(best_v);
+            }
+          };
+          for (int pass = 0; pass < 3; pass++) {
+            for (size_t c : c1) try_multi_emb(c);
+            for (size_t c : c35) try_multi_emb(c);
+            for (size_t c : c247) try_multi_emb(c);
+          }
+        }
+      }
+    }
+
     // Coupled linear-bottleneck QAT snapping for KDA gate projections
+    #pragma omp parallel for schedule(dynamic)
     for (int blk = min_blk; blk < 16; blk++) {
       if (blk % 4 == 3) continue; // window attention layer has no gates
       for (const char* gname : {"forget_gate_projection", "output_gate_projection"}) {
@@ -1990,8 +2125,8 @@ int main(int argc, char** argv) {
         }
         if (i_up_q < 0 || i_up_s < 0 || i_dn_q < 0 || i_dn_s < 0) continue;
         const size_t N_bot = es[i_up_q].rows(), D = es[i_up_q].cols();
-        const uint16_t* up_sc = reinterpret_cast<const uint16_t*>(es[i_up_s].data.data());
-        const uint16_t* dn_sc = reinterpret_cast<const uint16_t*>(es[i_dn_s].data.data());
+        uint16_t* up_sc_mut = reinterpret_cast<uint16_t*>(es[i_up_s].data.data());
+        uint16_t* dn_sc_mut = reinterpret_cast<uint16_t*>(es[i_dn_s].data.data());
         std::vector<uint32_t> bot_digs(N_bot, 0);
         for (size_t k = 0; k < N_bot; k++) {
           uint32_t c = 0;
@@ -2001,35 +2136,9 @@ int main(int argc, char** argv) {
         }
         std::vector<double> u_orig(N_bot * D, 0.0);
         for (size_t j = 0; j < N_bot; j++) {
-          double sc = bf16_val(up_sc[j]);
+          double sc = bf16_val(up_sc_mut[j]);
           const int8_t* urow = reinterpret_cast<const int8_t*>(&es[i_up_q].data[j * D]);
           for (size_t d = 0; d < D; d++) u_orig[j * D + d] = sc * urow[d];
-        }
-        std::vector<double> col_imp(N_bot, 0.0);
-        for (size_t r = 0; r < D; r++) {
-          double rsc = bf16_val(dn_sc[r]);
-          const int8_t* drow = reinterpret_cast<const int8_t*>(&es[i_dn_q].data[r * N_bot]);
-          for (size_t j = 0; j < N_bot; j++) {
-            double v = rsc * drow[j];
-            col_imp[j] += v * v;
-          }
-        }
-        std::vector<double> G_up(D * D, 0.0);
-        for (size_t j = 0; j < N_bot; j++) {
-          double wj = col_imp[j] + 1e-6;
-          const double* uj = &u_orig[j * D];
-          for (size_t d1 = 0; d1 < D; d1++)
-            for (size_t d2 = d1; d2 < D; d2++)
-              G_up[d1 * D + d2] += wj * uj[d1] * uj[d2];
-        }
-        double trG = 0.0;
-        for (size_t d = 0; d < D; d++) trG += G_up[d * D + d];
-        double inv_trG = (trG > 0.0) ? (double(D) / trG) : 1.0;
-        for (size_t d1 = 0; d1 < D; d1++) {
-          for (size_t d2 = d1; d2 < D; d2++) {
-            double v = G_up[d1 * D + d2] * inv_trG + ((d1 == d2) ? 2.5 : 0.0);
-            G_up[d1 * D + d2] = G_up[d2 * D + d1] = v;
-          }
         }
         auto order_ok = [&](size_t j) {
           const uint8_t* cur = &es[i_up_q].data[j * D];
@@ -2039,12 +2148,30 @@ int main(int argc, char** argv) {
         };
         for (size_t j = 0; j < N_bot; j++) {
           int8_t* urow = reinterpret_cast<int8_t*>(&es[i_up_q].data[j * D]);
-          std::vector<int> orig_u(D);
+          float sc_orig = bf16_val(up_sc_mut[j]);
+          uint16_t b_new = (alpha_g > 1.0) ? f32_to_bf16_4bit(float(sc_orig * alpha_g)) : up_sc_mut[j];
+          float sc_new = bf16_val(b_new);
+          double inv_alpha = (sc_new > 0.0f && sc_orig > 0.0f) ? (double(sc_orig) / double(sc_new)) : 1.0;
+          up_sc_mut[j] = b_new;
+          std::vector<int> raw_u(D);
+          std::vector<double> orig_u(D);
           double sq_orig = 0.0;
-          for (size_t d = 0; d < D; d++) { orig_u[d] = urow[d]; sq_orig += double(urow[d]) * urow[d]; }
+          int r_nnz = 0;
+          for (size_t d = 0; d < D; d++) {
+            raw_u[d] = urow[d];
+            if (urow[d]) r_nnz++;
+            orig_u[d] = double(urow[d]) * inv_alpha;
+            sq_orig += orig_u[d] * orig_u[d];
+          }
           if (sq_orig <= 0.0) continue;
-          double w_sq = 8.0 / sq_orig, w_dot = 8.0 / sq_orig, w_sum = 2.0 / double(D);
+          double w_sq = w_sq_g_k / sq_orig, w_dot = w_sq_g_k / sq_orig, w_sum = 2.0 / double(D);
           double dsq = 0.0, ddot = 0.0, dsum = 0.0;
+          for (size_t c = 0; c < D; c++) {
+            double err0 = double(urow[c]) - orig_u[c];
+            dsq += double(urow[c]) * urow[c] - orig_u[c] * orig_u[c];
+            ddot += err0 * orig_u[c];
+            dsum += err0;
+          }
           auto eval_cost = [&](size_t c, int v_cur, int v_new) {
             double dv = v_new - v_cur;
             double e_cur = v_cur - orig_u[c], e_new = v_new - orig_u[c];
@@ -2054,12 +2181,15 @@ int main(int argc, char** argv) {
             return (e_new * e_new - e_cur * e_cur)
                  + w_sq * (d_sq_new * d_sq_new - dsq * dsq)
                  + w_dot * (d_dot_new * d_dot_new - ddot * ddot)
-                 + w_sum * (d_sum_new * d_sum_new - dsum * dsum);
+                 + w_sum * (d_sum_new * d_sum_new - dsum * dsum)
+                 + lam_g * (r_bits(v_new) - r_bits(v_cur));
           };
           auto snap_u = [&](size_t c, int vn_lo, int vn_hi) {
             int v = urow[c];
             int vn1 = (eval_cost(c, v, vn_hi) <= eval_cost(c, v, vn_lo)) ? vn_hi : vn_lo;
+            if (vn1 == 0 && v != 0 && r_nnz <= 1) vn1 = vn_hi;
             int vn2 = (vn1 == vn_hi) ? vn_lo : vn_hi;
+            if (vn2 == 0 && v != 0 && r_nnz <= 1) vn2 = vn_hi;
             int vn = v;
             urow[c] = int8_t(vn1);
             if (order_ok(j)) vn = vn1;
@@ -2068,50 +2198,89 @@ int main(int argc, char** argv) {
               if (order_ok(j)) vn = vn2;
               else urow[c] = int8_t(v);
             }
+            if (vn == 0 && v != 0) r_nnz--;
             double dv = vn - v;
             dsq += double(vn) * vn - double(v) * v;
             ddot += dv * orig_u[c];
             dsum += dv;
             urow[c] = int8_t(vn);
           };
-          std::vector<size_t> c1, c35;
+          std::vector<size_t> c1, c35, c247;
           for (size_t c = 0; c < D; c++) {
-            int a = std::abs(int(urow[c]));
+            int a = std::abs(raw_u[c]);
             if (a == 1) c1.push_back(c);
             else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+            else if (a == 2 || a == 4 || a == 7) c247.push_back(c);
           }
-          for (size_t c : c1) snap_u(c, 0, 2 * ((urow[c] > 0) ? 1 : -1));
+          for (size_t c : c1) snap_u(c, 0, 2 * ((raw_u[c] > 0) ? 1 : -1));
           for (size_t c : c35) {
-            int s_u = (urow[c] > 0) ? 1 : -1, a = std::abs(int(urow[c]));
+            int s_u = (raw_u[c] > 0) ? 1 : -1, a = std::abs(raw_u[c]);
             int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
             snap_u(c, s_u * lo, s_u * hi);
           }
-          for (int pass = 0; pass < 4; pass++) {
-            for (size_t c : c1) {
-              int s_u = (orig_u[c] > 0) ? 1 : -1, v_cur = urow[c], v_alt = (v_cur == 0) ? (2 * s_u) : 0;
-              if (eval_cost(c, v_cur, v_alt) < -1e-12) {
-                urow[c] = int8_t(v_alt);
-                if (order_ok(j)) {
-                  double d_alt = v_alt - v_cur;
-                  dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
-                  ddot += d_alt * orig_u[c];
-                  dsum += d_alt;
-                } else urow[c] = int8_t(v_cur);
+          if (lam_g == 0.0 && alpha_g == 1.0) {
+            for (int pass = 0; pass < 4; pass++) {
+              for (size_t c : c1) {
+                int s_u = (raw_u[c] > 0) ? 1 : -1, v_cur = urow[c], v_alt = (v_cur == 0) ? (2 * s_u) : 0;
+                if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+                  urow[c] = int8_t(v_alt);
+                  if (order_ok(j)) {
+                    double d_alt = v_alt - v_cur;
+                    dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                    ddot += d_alt * orig_u[c];
+                    dsum += d_alt;
+                  } else urow[c] = int8_t(v_cur);
+                }
+              }
+              for (size_t c : c35) {
+                int s_u = (raw_u[c] > 0) ? 1 : -1, a = std::abs(raw_u[c]), v_cur = urow[c];
+                int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+                int v_alt = (v_cur == s_u * lo) ? (s_u * hi) : (s_u * lo);
+                if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+                  urow[c] = int8_t(v_alt);
+                  if (order_ok(j)) {
+                    double d_alt = v_alt - v_cur;
+                    dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                    ddot += d_alt * orig_u[c];
+                    dsum += d_alt;
+                  } else urow[c] = int8_t(v_cur);
+                }
               }
             }
-            for (size_t c : c35) {
-              int s_u = (orig_u[c] > 0) ? 1 : -1, a = std::abs(orig_u[c]), v_cur = urow[c];
-              int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
-              int v_alt = (v_cur == s_u * lo) ? (s_u * hi) : (s_u * lo);
-              if (eval_cost(c, v_cur, v_alt) < -1e-12) {
-                urow[c] = int8_t(v_alt);
-                if (order_ok(j)) {
-                  double d_alt = v_alt - v_cur;
-                  dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
-                  ddot += d_alt * orig_u[c];
-                  dsum += d_alt;
-                } else urow[c] = int8_t(v_cur);
+          } else {
+            auto try_multi_gup = [&](size_t c) {
+              int a = std::abs(raw_u[c]);
+              if (a == 0) return;
+              int s_u = (raw_u[c] > 0) ? 1 : -1, v_cur = urow[c];
+              int hi = (a <= 2) ? 2 : ((a <= 4) ? 4 : 7);
+              int lo_min = (min_lv_35 && a >= 5) ? 2 : ((min_lv_35 == 2 && a >= 3) ? 2 : 0);
+              const int levels[4] = {0, 2 * s_u, 4 * s_u, 7 * s_u};
+              int best_v = v_cur;
+              double best_cost = -1e-12;
+              for (int lv : levels) {
+                if (std::abs(lv) > hi || std::abs(lv) < lo_min || lv == v_cur) continue;
+                if (lv == 0 && v_cur != 0 && r_nnz <= 1) continue;
+                double c_lv = eval_cost(c, v_cur, lv);
+                if (c_lv < best_cost) {
+                  urow[c] = int8_t(lv);
+                  if (order_ok(j)) { best_cost = c_lv; best_v = lv; }
+                  urow[c] = int8_t(v_cur);
+                }
               }
+              if (best_v != v_cur) {
+                if (best_v == 0 && v_cur != 0) r_nnz--;
+                else if (best_v != 0 && v_cur == 0) r_nnz++;
+                double d_alt = best_v - v_cur;
+                dsq += double(best_v) * best_v - double(v_cur) * v_cur;
+                ddot += d_alt * orig_u[c];
+                dsum += d_alt;
+                urow[c] = int8_t(best_v);
+              }
+            };
+            for (int pass = 0; pass < 4; pass++) {
+              for (size_t c : c1) try_multi_gup(c);
+              for (size_t c : c35) try_multi_gup(c);
+              for (size_t c : c247) try_multi_gup(c);
             }
           }
         }
@@ -2135,7 +2304,7 @@ int main(int argc, char** argv) {
         std::vector<double> old_u = u_orig;
         for (size_t j = 0; j < N_bot; j++)
           std::memcpy(&u_orig[j * D], &old_u[size_t(perm[j]) * D], D * sizeof(double));
-        up_sc = reinterpret_cast<const uint16_t*>(es[i_up_s].data.data());
+        const uint16_t* up_sc = reinterpret_cast<const uint16_t*>(es[i_up_s].data.data());
         std::vector<double> u_new(N_bot * D, 0.0), bot_imp(N_bot, 0.0), bot_orig_imp(N_bot, 0.0);
         for (size_t j = 0; j < N_bot; j++) {
           double sc = bf16_val(up_sc[j]);
@@ -2163,72 +2332,126 @@ int main(int argc, char** argv) {
             cov_cross[i * N_bot + j] = s_no;
           }
         }
+        double mean_cov = 0.0;
+        for (size_t j = 0; j < N_bot; j++) mean_cov += cov[j * N_bot + j];
+        mean_cov /= double(N_bot);
         for (size_t r = 0; r < D; r++) {
           int8_t* drow = reinterpret_cast<int8_t*>(&es[i_dn_q].data[r * N_bot]);
+          double inv_alpha_dn = 1.0;
+          double alpha_g_dn = 1.0 + 1.0 * (alpha_g - 1.0);
+          double lam_g_dn = 1.0 * lam_g;
+          if (alpha_g_dn > 1.0) {
+            float sc_orig = bf16_val(dn_sc_mut[r]);
+            uint16_t b_new = f32_to_bf16_4bit(float(sc_orig * alpha_g_dn));
+            float sc_new = bf16_val(b_new);
+            if (sc_new > 0.0f && sc_orig > 0.0f) inv_alpha_dn = double(sc_orig) / double(sc_new);
+            dn_sc_mut[r] = b_new;
+          }
           std::vector<int> orig_w(N_bot);
-          for (size_t j = 0; j < N_bot; j++) orig_w[j] = drow[j];
+          int r_nnz = 0;
+          for (size_t j = 0; j < N_bot; j++) { orig_w[j] = drow[j]; if (drow[j]) r_nnz++; }
+          if (r_nnz == 0) continue;
           std::vector<double> g(N_bot, 0.0);
           for (size_t i = 0; i < N_bot; i++) {
             double s_g = 0.0;
             for (size_t j = 0; j < N_bot; j++)
-              s_g += (cov[i * N_bot + j] - cov_cross[i * N_bot + j]) * orig_w[j];
+              s_g += (cov[i * N_bot + j] - inv_alpha_dn * cov_cross[i * N_bot + j]) * orig_w[j];
             g[i] = s_g;
           }
           auto snap_col = [&](size_t c, int vn_lo, int vn_hi) {
             int v = drow[c];
             double d_lo = vn_lo - v, d_hi = vn_hi - v, c_cc = cov[c * N_bot + c];
-            int vn = (2.0 * d_hi * g[c] + d_hi * d_hi * c_cc <= 2.0 * d_lo * g[c] + d_lo * d_lo * c_cc) ? vn_hi : vn_lo;
+            double cost_hi = 2.0 * d_hi * g[c] + d_hi * d_hi * c_cc + lam_g_dn * mean_cov * r_bits(vn_hi);
+            double cost_lo = 2.0 * d_lo * g[c] + d_lo * d_lo * c_cc + lam_g_dn * mean_cov * r_bits(vn_lo);
+            int vn = (cost_hi <= cost_lo) ? vn_hi : vn_lo;
+            if (vn == 0 && v != 0 && r_nnz <= 1) vn = vn_hi;
+            if (vn == 0 && v != 0) r_nnz--;
             double dv = vn - v;
             drow[c] = int8_t(vn);
             const double* cov_c = &cov[c * N_bot];
             for (size_t j = 0; j < N_bot; j++) g[j] += dv * cov_c[j];
           };
-          std::vector<size_t> c1, c35;
+          std::vector<size_t> c1, c35, c247;
           for (size_t c = 0; c < N_bot; c++) {
             int a = std::abs(int(drow[c]));
             if (a == 1) c1.push_back(c);
             else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+            else if (a == 2 || a == 4 || a == 7) c247.push_back(c);
           }
           auto cmp_c = [&](size_t a, size_t b) { return bot_imp[a] < bot_imp[b]; };
           std::sort(c1.begin(), c1.end(), cmp_c);
           std::sort(c35.begin(), c35.end(), cmp_c);
+          std::sort(c247.begin(), c247.end(), cmp_c);
           for (size_t c : c1) snap_col(c, 0, 2 * ((drow[c] > 0) ? 1 : -1));
           for (size_t c : c35) {
             int s = (drow[c] > 0) ? 1 : -1, a = std::abs(int(drow[c]));
             int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
             snap_col(c, s * lo, s * hi);
           }
-          for (int pass = 0; pass < 4; pass++) {
-            for (size_t c : c1) {
-              int s = (orig_w[c] > 0) ? 1 : -1, v_cur = drow[c], v_alt = (v_cur == 0) ? (2 * s) : 0;
-              double d_alt = v_alt - v_cur;
-              if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * N_bot + c] < -1e-12) {
-                drow[c] = int8_t(v_alt);
-                const double* cov_c = &cov[c * N_bot];
-                for (size_t j = 0; j < N_bot; j++) g[j] += d_alt * cov_c[j];
+          if (lam_g == 0.0 && alpha_g == 1.0) {
+            for (int pass = 0; pass < 4; pass++) {
+              for (size_t c : c1) {
+                int s = (orig_w[c] > 0) ? 1 : -1, v_cur = drow[c], v_alt = (v_cur == 0) ? (2 * s) : 0;
+                double d_alt = v_alt - v_cur;
+                if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * N_bot + c] < -1e-12) {
+                  drow[c] = int8_t(v_alt);
+                  const double* cov_c = &cov[c * N_bot];
+                  for (size_t j = 0; j < N_bot; j++) g[j] += d_alt * cov_c[j];
+                }
+              }
+              for (size_t c : c35) {
+                int s = (orig_w[c] > 0) ? 1 : -1, a = std::abs(orig_w[c]), v_cur = drow[c];
+                int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+                int v_alt = (v_cur == s * lo) ? (s * hi) : (s * lo);
+                double d_alt = v_alt - v_cur;
+                if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * N_bot + c] < -1e-12) {
+                  drow[c] = int8_t(v_alt);
+                  const double* cov_c = &cov[c * N_bot];
+                  for (size_t j = 0; j < N_bot; j++) g[j] += d_alt * cov_c[j];
+                }
               }
             }
-            for (size_t c : c35) {
-              int s = (orig_w[c] > 0) ? 1 : -1, a = std::abs(orig_w[c]), v_cur = drow[c];
-              int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
-              int v_alt = (v_cur == s * lo) ? (s * hi) : (s * lo);
-              double d_alt = v_alt - v_cur;
-              if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * N_bot + c] < -1e-12) {
-                drow[c] = int8_t(v_alt);
+          } else {
+            auto try_multi_gdn = [&](size_t c) {
+              int a = std::abs(orig_w[c]);
+              if (a == 0) return;
+              int s = (orig_w[c] > 0) ? 1 : -1, v_cur = drow[c];
+              int hi = (a <= 2) ? 2 : ((a <= 4) ? 4 : 7);
+              int lo_min = (min_lv_35 && a >= 5) ? 2 : ((min_lv_35 == 2 && a >= 3) ? 2 : 0);
+              const int levels[4] = {0, 2 * s, 4 * s, 7 * s};
+              int best_v = v_cur;
+              double best_cost = -1e-12;
+              for (int lv : levels) {
+                if (std::abs(lv) > hi || std::abs(lv) < lo_min || lv == v_cur) continue;
+                if (lv == 0 && v_cur != 0 && r_nnz <= 1) continue;
+                double d_alt = lv - v_cur;
+                double c_lv = 2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * N_bot + c] + lam_g_dn * mean_cov * (r_bits(lv) - r_bits(v_cur));
+                if (c_lv < best_cost) { best_cost = c_lv; best_v = lv; }
+              }
+              if (best_v != v_cur) {
+                if (best_v == 0 && v_cur != 0) r_nnz--;
+                else if (best_v != 0 && v_cur == 0) r_nnz++;
+                double d_alt = best_v - v_cur;
+                drow[c] = int8_t(best_v);
                 const double* cov_c = &cov[c * N_bot];
                 for (size_t j = 0; j < N_bot; j++) g[j] += d_alt * cov_c[j];
               }
+            };
+            for (int pass = 0; pass < 4; pass++) {
+              for (size_t c : c1) try_multi_gdn(c);
+              for (size_t c : c35) try_multi_gdn(c);
+              for (size_t c : c247) try_multi_gdn(c);
             }
           }
         }
       }
     }
 
-
     // QAT snapping for query_projection and key_projection in blocks >= qk_min_blk
     int qk_min_blk = (argc >= 8) ? std::atoi(argv[7]) : 0;
     int o_min_blk = (argc >= 9) ? std::atoi(argv[8]) : 0;
     int v_min_blk = (argc >= 10) ? std::atoi(argv[9]) : 0;
+    #pragma omp parallel for schedule(dynamic)
     for (int blk = qk_min_blk; blk < 16; blk++) {
       std::string pref = "blocks." + std::to_string(blk) + ".attention.";
       int i_qq = -1, i_qs = -1, i_kq = -1, i_ks = -1;
@@ -2242,28 +2465,62 @@ int main(int argc, char** argv) {
       const size_t D = 192;
       const size_t Rk = es[i_kq].rows();
       std::vector<int8_t> k_orig_all(es[i_kq].data.begin(), es[i_kq].data.end());
+      std::vector<uint16_t> k_sc_orig_all(Rk);
+      std::memcpy(k_sc_orig_all.data(), es[i_ks].data.data(), Rk * sizeof(uint16_t));
       for (int idx_q : {i_kq, i_qq}) {
+        int idx_s = (idx_q == i_kq) ? i_ks : i_qs;
+        double cur_lam_qk = (idx_q == i_qq) ? (1.0 * lam_qk) : lam_qk;
+        double cur_alpha_qk = (idx_q == i_qq) ? (1.0 + 1.0 * (alpha_qk - 1.0)) : alpha_qk;
+        uint16_t* sc_mut = reinterpret_cast<uint16_t*>(es[idx_s].data.data());
         size_t R = es[idx_q].rows();
         for (size_t r = 0; r < R; r++) {
           int8_t* row = reinterpret_cast<int8_t*>(&es[idx_q].data[r * D]);
-          std::vector<int> orig_u(D);
+          int r_nnz = 0;
+          for (size_t d = 0; d < D; d++) if (row[d]) r_nnz++;
+          if (r_nnz == 0) continue;
+          double inv_alpha = 1.0;
+          if (cur_alpha_qk > 1.0) {
+            float sc_orig = bf16_val(sc_mut[r]);
+            uint16_t b_new = f32_to_bf16_4bit(float(sc_orig * cur_alpha_qk));
+            float sc_new = bf16_val(b_new);
+            if (sc_new > 0.0f && sc_orig > 0.0f) inv_alpha = double(sc_orig) / double(sc_new);
+            sc_mut[r] = b_new;
+          }
+          std::vector<int> raw_u(D);
+          std::vector<double> orig_u(D);
           double sq_orig = 0.0;
-          for (size_t d = 0; d < D; d++) { orig_u[d] = row[d]; sq_orig += double(row[d]) * row[d]; }
+          for (size_t d = 0; d < D; d++) {
+            raw_u[d] = row[d];
+            orig_u[d] = double(row[d]) * inv_alpha;
+            sq_orig += orig_u[d] * orig_u[d];
+          }
           if (sq_orig <= 0.0) continue;
           size_t rk = (Rk == 64) ? (r % 64) : r;
           const int8_t* k_new_row = reinterpret_cast<const int8_t*>(&es[i_kq].data[rk * D]);
           const int8_t* k_old_row = &k_orig_all[rk * D];
+          double k_ratio = 1.0;
+          if (idx_q == i_qq && alpha_qk > 1.0) {
+            float ks_old = bf16_val(k_sc_orig_all[rk]);
+            float ks_new = bf16_val(reinterpret_cast<const uint16_t*>(es[i_ks].data.data())[rk]);
+            if (ks_new > 0.0f && ks_old > 0.0f) k_ratio = double(ks_old) / double(ks_new);
+          }
           double sq_k = 0.0;
           double dpk0 = 0.0;
           if (idx_q == i_qq) {
             for (size_t d = 0; d < D; d++) {
               sq_k += double(k_new_row[d]) * k_new_row[d];
-              dpk0 += double(orig_u[d]) * (double(k_new_row[d]) - double(k_old_row[d]));
+              dpk0 += double(raw_u[d]) * double(k_new_row[d]) - orig_u[d] * (k_ratio * double(k_old_row[d]));
             }
           }
-          double w_sq = 8.0 / sq_orig, w_dot = 8.0 / sq_orig, w_sum = 2.0 / double(D);
-          double w_pk = (idx_q == i_qq && sq_k > 0.0) ? (4.0 / sq_k) : 0.0;
+          double w_sq = w_sq_qk_k / sq_orig, w_dot = w_sq_qk_k / sq_orig, w_sum = 2.0 / double(D);
+          double w_pk = (idx_q == i_qq && sq_k > 0.0) ? (0.5 * w_sq_qk_k / sq_k) : 0.0;
           double dsq = 0.0, ddot = 0.0, dsum = 0.0, dpk = dpk0;
+          for (size_t c = 0; c < D; c++) {
+            double err0 = double(row[c]) - orig_u[c];
+            dsq += double(row[c]) * row[c] - orig_u[c] * orig_u[c];
+            ddot += err0 * orig_u[c];
+            dsum += err0;
+          }
           auto eval_cost = [&](size_t c, int v_cur, int v_new) {
             double dv = v_new - v_cur;
             double e_cur = v_cur - orig_u[c], e_new = v_new - orig_u[c];
@@ -2275,11 +2532,14 @@ int main(int argc, char** argv) {
                  + w_sq * (d_sq_new * d_sq_new - dsq * dsq)
                  + w_dot * (d_dot_new * d_dot_new - ddot * ddot)
                  + w_sum * (d_sum_new * d_sum_new - dsum * dsum)
-                 + w_pk * (d_pk_new * d_pk_new - dpk * dpk);
+                 + w_pk * (d_pk_new * d_pk_new - dpk * dpk)
+                 + cur_lam_qk * (r_bits(v_new) - r_bits(v_cur));
           };
           auto snap_u = [&](size_t c, int vn_lo, int vn_hi) {
             int v = row[c];
             int vn = (eval_cost(c, v, vn_hi) <= eval_cost(c, v, vn_lo)) ? vn_hi : vn_lo;
+            if (vn == 0 && v != 0 && r_nnz <= 1) vn = vn_hi;
+            if (vn == 0 && v != 0) r_nnz--;
             double dv = vn - v;
             dsq += double(vn) * vn - double(v) * v;
             ddot += dv * orig_u[c];
@@ -2287,48 +2547,84 @@ int main(int argc, char** argv) {
             if (idx_q == i_qq) dpk += dv * double(k_new_row[c]);
             row[c] = int8_t(vn);
           };
-          std::vector<size_t> c1, c35;
+          std::vector<size_t> c1, c35, c247;
           for (size_t c = 0; c < D; c++) {
-            int a = std::abs(int(row[c]));
+            int a = std::abs(raw_u[c]);
             if (a == 1) c1.push_back(c);
             else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+            else if (a == 2 || a == 4 || a == 7) c247.push_back(c);
           }
-          for (size_t c : c1) snap_u(c, 0, 2 * ((row[c] > 0) ? 1 : -1));
+          for (size_t c : c1) snap_u(c, 0, 2 * ((raw_u[c] > 0) ? 1 : -1));
           for (size_t c : c35) {
-            int s_u = (row[c] > 0) ? 1 : -1, a = std::abs(int(row[c]));
+            int s_u = (raw_u[c] > 0) ? 1 : -1, a = std::abs(raw_u[c]);
             int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
             snap_u(c, s_u * lo, s_u * hi);
           }
-          for (int pass = 0; pass < 4; pass++) {
-            for (size_t c : c1) {
-              int s_u = (orig_u[c] > 0) ? 1 : -1, v_cur = row[c], v_alt = (v_cur == 0) ? (2 * s_u) : 0;
-              if (eval_cost(c, v_cur, v_alt) < -1e-12) {
-                double d_alt = v_alt - v_cur;
-                dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
-                ddot += d_alt * orig_u[c];
-                dsum += d_alt;
-                if (idx_q == i_qq) dpk += d_alt * double(k_new_row[c]);
-                row[c] = int8_t(v_alt);
+          if (lam_qk == 0.0 && alpha_qk == 1.0) {
+            for (int pass = 0; pass < 4; pass++) {
+              for (size_t c : c1) {
+                int s_u = (raw_u[c] > 0) ? 1 : -1, v_cur = row[c], v_alt = (v_cur == 0) ? (2 * s_u) : 0;
+                if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+                  double d_alt = v_alt - v_cur;
+                  dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                  ddot += d_alt * orig_u[c];
+                  dsum += d_alt;
+                  if (idx_q == i_qq) dpk += d_alt * double(k_new_row[c]);
+                  row[c] = int8_t(v_alt);
+                }
+              }
+              for (size_t c : c35) {
+                int s_u = (raw_u[c] > 0) ? 1 : -1, a = std::abs(raw_u[c]), v_cur = row[c];
+                int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+                int v_alt = (v_cur == s_u * lo) ? (s_u * hi) : (s_u * lo);
+                if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+                  double d_alt = v_alt - v_cur;
+                  dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                  ddot += d_alt * orig_u[c];
+                  dsum += d_alt;
+                  if (idx_q == i_qq) dpk += d_alt * double(k_new_row[c]);
+                  row[c] = int8_t(v_alt);
+                }
               }
             }
-            for (size_t c : c35) {
-              int s_u = (orig_u[c] > 0) ? 1 : -1, a = std::abs(orig_u[c]), v_cur = row[c];
-              int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
-              int v_alt = (v_cur == s_u * lo) ? (s_u * hi) : (s_u * lo);
-              if (eval_cost(c, v_cur, v_alt) < -1e-12) {
-                double d_alt = v_alt - v_cur;
-                dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+          } else {
+            auto try_multi_qk = [&](size_t c) {
+              int a = std::abs(raw_u[c]);
+              if (a == 0) return;
+              int s_u = (raw_u[c] > 0) ? 1 : -1, v_cur = row[c];
+              int hi = (a <= 2) ? 2 : ((a <= 4) ? 4 : 7);
+              int lo_min = (min_lv_35 && a >= 5) ? 2 : ((min_lv_35 == 2 && a >= 3) ? 2 : 0);
+              const int levels[4] = {0, 2 * s_u, 4 * s_u, 7 * s_u};
+              int best_v = v_cur;
+              double best_cost = -1e-12;
+              for (int lv : levels) {
+                if (std::abs(lv) > hi || std::abs(lv) < lo_min || lv == v_cur) continue;
+                if (lv == 0 && v_cur != 0 && r_nnz <= 1) continue;
+                double c_lv = eval_cost(c, v_cur, lv);
+                if (c_lv < best_cost) { best_cost = c_lv; best_v = lv; }
+              }
+              if (best_v != v_cur) {
+                if (best_v == 0 && v_cur != 0) r_nnz--;
+                else if (best_v != 0 && v_cur == 0) r_nnz++;
+                double d_alt = best_v - v_cur;
+                dsq += double(best_v) * best_v - double(v_cur) * v_cur;
                 ddot += d_alt * orig_u[c];
                 dsum += d_alt;
                 if (idx_q == i_qq) dpk += d_alt * double(k_new_row[c]);
-                row[c] = int8_t(v_alt);
+                row[c] = int8_t(best_v);
               }
+            };
+            for (int pass = 0; pass < 4; pass++) {
+              for (size_t c : c1) try_multi_qk(c);
+              for (size_t c : c35) try_multi_qk(c);
+              for (size_t c : c247) try_multi_qk(c);
             }
           }
         }
       }
     }
     // Coupled QAT snapping for value_projection and output_projection in blocks >= vo_min_blk
+    #pragma omp parallel for schedule(dynamic)
     for (int blk = std::min(o_min_blk, v_min_blk); blk < 16; blk++) {
       std::string pref = "blocks." + std::to_string(blk) + ".attention.";
       int i_vq = -1, i_vs = -1, i_oq = -1, i_os = -1;
@@ -2340,8 +2636,8 @@ int main(int argc, char** argv) {
       }
       if (i_vq < 0 || i_vs < 0 || i_oq < 0 || i_os < 0) continue;
       const size_t Rv = es[i_vq].rows(), D = 192;
-      const uint16_t* v_sc = reinterpret_cast<const uint16_t*>(es[i_vs].data.data());
-      const uint16_t* o_sc = reinterpret_cast<const uint16_t*>(es[i_os].data.data());
+      uint16_t* v_sc_mut = reinterpret_cast<uint16_t*>(es[i_vs].data.data());
+      uint16_t* o_sc_mut = reinterpret_cast<uint16_t*>(es[i_os].data.data());
       std::vector<uint32_t> v_digs(64, 0);
       for (size_t k = 0; k < 64; k++) {
         uint32_t c = 0;
@@ -2366,7 +2662,7 @@ int main(int argc, char** argv) {
       }
       std::vector<double> v_orig(Rv * D, 0.0);
       for (size_t j = 0; j < Rv; j++) {
-        double sc = bf16_val(v_sc[j]) * ch_mult[j];
+        double sc = bf16_val(v_sc_mut[j]) * ch_mult[j];
         const int8_t* vrow = reinterpret_cast<const int8_t*>(&es[i_vq].data[j * D]);
         for (size_t d = 0; d < D; d++) v_orig[j * D + d] = sc * vrow[d];
       }
@@ -2380,12 +2676,34 @@ int main(int argc, char** argv) {
       if (blk >= v_min_blk) {
       for (size_t j = 0; j < Rv; j++) {
         int8_t* vrow = reinterpret_cast<int8_t*>(&es[i_vq].data[j * D]);
-        std::vector<int> orig_u(D);
+        int r_nnz = 0;
+        for (size_t d = 0; d < D; d++) if (vrow[d]) r_nnz++;
+        if (r_nnz == 0) continue;
+        double inv_alpha = 1.0;
+        if (alpha_v > 1.0) {
+          float sc_orig = bf16_val(v_sc_mut[j]);
+          uint16_t b_new = f32_to_bf16_4bit(float(sc_orig * alpha_v));
+          float sc_new = bf16_val(b_new);
+          if (sc_new > 0.0f && sc_orig > 0.0f) inv_alpha = double(sc_orig) / double(sc_new);
+          v_sc_mut[j] = b_new;
+        }
+        std::vector<int> raw_u(D);
+        std::vector<double> orig_u(D);
         double sq_orig = 0.0;
-        for (size_t d = 0; d < D; d++) { orig_u[d] = vrow[d]; sq_orig += double(vrow[d]) * vrow[d]; }
+        for (size_t d = 0; d < D; d++) {
+          raw_u[d] = vrow[d];
+          orig_u[d] = double(vrow[d]) * inv_alpha;
+          sq_orig += orig_u[d] * orig_u[d];
+        }
         if (sq_orig <= 0.0) continue;
-        double w_sq = 8.0 / sq_orig, w_dot = 8.0 / sq_orig, w_sum = 2.0 / double(D);
+        double w_sq = w_sq_v_k / sq_orig, w_dot = w_sq_v_k / sq_orig, w_sum = 2.0 / double(D);
         double dsq = 0.0, ddot = 0.0, dsum = 0.0;
+        for (size_t c = 0; c < D; c++) {
+          double err0 = double(vrow[c]) - orig_u[c];
+          dsq += double(vrow[c]) * vrow[c] - orig_u[c] * orig_u[c];
+          ddot += err0 * orig_u[c];
+          dsum += err0;
+        }
         auto eval_cost = [&](size_t c, int v_cur, int v_new) {
           double dv = v_new - v_cur;
           double e_cur = v_cur - orig_u[c], e_new = v_new - orig_u[c];
@@ -2395,12 +2713,15 @@ int main(int argc, char** argv) {
           return (e_new * e_new - e_cur * e_cur)
                + w_sq * (d_sq_new * d_sq_new - dsq * dsq)
                + w_dot * (d_dot_new * d_dot_new - ddot * ddot)
-               + w_sum * (d_sum_new * d_sum_new - dsum * dsum);
+               + w_sum * (d_sum_new * d_sum_new - dsum * dsum)
+               + lam_v * (r_bits(v_new) - r_bits(v_cur));
         };
         auto snap_u = [&](size_t c, int vn_lo, int vn_hi) {
           int v = vrow[c];
           int vn1 = (eval_cost(c, v, vn_hi) <= eval_cost(c, v, vn_lo)) ? vn_hi : vn_lo;
+          if (vn1 == 0 && v != 0 && r_nnz <= 1) vn1 = vn_hi;
           int vn2 = (vn1 == vn_hi) ? vn_lo : vn_hi;
+          if (vn2 == 0 && v != 0 && r_nnz <= 1) vn2 = vn_hi;
           int vn = v;
           vrow[c] = int8_t(vn1);
           if (order_ok(j)) vn = vn1;
@@ -2409,50 +2730,89 @@ int main(int argc, char** argv) {
             if (order_ok(j)) vn = vn2;
             else vrow[c] = int8_t(v);
           }
+          if (vn == 0 && v != 0) r_nnz--;
           double dv = vn - v;
           dsq += double(vn) * vn - double(v) * v;
           ddot += dv * orig_u[c];
           dsum += dv;
           vrow[c] = int8_t(vn);
         };
-        std::vector<size_t> c1, c35;
+        std::vector<size_t> c1, c35, c247;
         for (size_t c = 0; c < D; c++) {
-          int a = std::abs(int(vrow[c]));
+          int a = std::abs(raw_u[c]);
           if (a == 1) c1.push_back(c);
           else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+          else if (a == 2 || a == 4 || a == 7) c247.push_back(c);
         }
-        for (size_t c : c1) snap_u(c, 0, 2 * ((vrow[c] > 0) ? 1 : -1));
+        for (size_t c : c1) snap_u(c, 0, 2 * ((raw_u[c] > 0) ? 1 : -1));
         for (size_t c : c35) {
-          int s_u = (vrow[c] > 0) ? 1 : -1, a = std::abs(int(vrow[c]));
+          int s_u = (raw_u[c] > 0) ? 1 : -1, a = std::abs(raw_u[c]);
           int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
           snap_u(c, s_u * lo, s_u * hi);
         }
-        for (int pass = 0; pass < 4; pass++) {
-          for (size_t c : c1) {
-            int s_u = (orig_u[c] > 0) ? 1 : -1, v_cur = vrow[c], v_alt = (v_cur == 0) ? (2 * s_u) : 0;
-            if (eval_cost(c, v_cur, v_alt) < -1e-12) {
-              vrow[c] = int8_t(v_alt);
-              if (order_ok(j)) {
-                double d_alt = v_alt - v_cur;
-                dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
-                ddot += d_alt * orig_u[c];
-                dsum += d_alt;
-              } else vrow[c] = int8_t(v_cur);
+        if (lam_v == 0.0 && alpha_v == 1.0) {
+          for (int pass = 0; pass < 4; pass++) {
+            for (size_t c : c1) {
+              int s_u = (raw_u[c] > 0) ? 1 : -1, v_cur = vrow[c], v_alt = (v_cur == 0) ? (2 * s_u) : 0;
+              if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+                vrow[c] = int8_t(v_alt);
+                if (order_ok(j)) {
+                  double d_alt = v_alt - v_cur;
+                  dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                  ddot += d_alt * orig_u[c];
+                  dsum += d_alt;
+                } else vrow[c] = int8_t(v_cur);
+              }
+            }
+            for (size_t c : c35) {
+              int s_u = (raw_u[c] > 0) ? 1 : -1, a = std::abs(raw_u[c]), v_cur = vrow[c];
+              int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+              int v_alt = (v_cur == s_u * lo) ? (s_u * hi) : (s_u * lo);
+              if (eval_cost(c, v_cur, v_alt) < -1e-12) {
+                vrow[c] = int8_t(v_alt);
+                if (order_ok(j)) {
+                  double d_alt = v_alt - v_cur;
+                  dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
+                  ddot += d_alt * orig_u[c];
+                  dsum += d_alt;
+                } else vrow[c] = int8_t(v_cur);
+              }
             }
           }
-          for (size_t c : c35) {
-            int s_u = (orig_u[c] > 0) ? 1 : -1, a = std::abs(orig_u[c]), v_cur = vrow[c];
-            int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
-            int v_alt = (v_cur == s_u * lo) ? (s_u * hi) : (s_u * lo);
-            if (eval_cost(c, v_cur, v_alt) < -1e-12) {
-              vrow[c] = int8_t(v_alt);
-              if (order_ok(j)) {
-                double d_alt = v_alt - v_cur;
-                dsq += double(v_alt) * v_alt - double(v_cur) * v_cur;
-                ddot += d_alt * orig_u[c];
-                dsum += d_alt;
-              } else vrow[c] = int8_t(v_cur);
+        } else {
+          auto try_multi_v = [&](size_t c) {
+            int a = std::abs(raw_u[c]);
+            if (a == 0) return;
+            int s_u = (raw_u[c] > 0) ? 1 : -1, v_cur = vrow[c];
+            int hi = (a <= 2) ? 2 : ((a <= 4) ? 4 : 7);
+            int lo_min = (min_lv_35 && a >= 5) ? 2 : ((min_lv_35 == 2 && a >= 3) ? 2 : 0);
+            const int levels[4] = {0, 2 * s_u, 4 * s_u, 7 * s_u};
+            int best_v = v_cur;
+            double best_cost = -1e-12;
+            for (int lv : levels) {
+              if (std::abs(lv) > hi || std::abs(lv) < lo_min || lv == v_cur) continue;
+              if (lv == 0 && v_cur != 0 && r_nnz <= 1) continue;
+              double c_lv = eval_cost(c, v_cur, lv);
+              if (c_lv < best_cost) {
+                vrow[c] = int8_t(lv);
+                if (order_ok(j)) { best_cost = c_lv; best_v = lv; }
+                vrow[c] = int8_t(v_cur);
+              }
             }
+            if (best_v != v_cur) {
+              if (best_v == 0 && v_cur != 0) r_nnz--;
+              else if (best_v != 0 && v_cur == 0) r_nnz++;
+              double d_alt = best_v - v_cur;
+              dsq += double(best_v) * best_v - double(v_cur) * v_cur;
+              ddot += d_alt * orig_u[c];
+              dsum += d_alt;
+              vrow[c] = int8_t(best_v);
+            }
+          };
+          for (int pass = 0; pass < 4; pass++) {
+            for (size_t c : c1) try_multi_v(c);
+            for (size_t c : c35) try_multi_v(c);
+            for (size_t c : c247) try_multi_v(c);
           }
         }
       }
@@ -2477,8 +2837,8 @@ int main(int argc, char** argv) {
       for (size_t h = 0; h < Rv / 64; h++)
         for (size_t j = 0; j < 64; j++)
           std::memcpy(&v_orig[(64 * h + j) * D], &old_v[(64 * h + size_t(perm[j])) * D], D * sizeof(double));
-      v_sc = reinterpret_cast<const uint16_t*>(es[i_vs].data.data());
       }
+      const uint16_t* v_sc = reinterpret_cast<const uint16_t*>(es[i_vs].data.data());
       std::vector<double> v_new(Rv * D, 0.0);
       for (size_t j = 0; j < Rv; j++) {
         double sc = bf16_val(v_sc[j]) * ch_mult[j];
@@ -2519,72 +2879,127 @@ int main(int argc, char** argv) {
             return 0.5 * rho + 0.5 * j1;
           };
           double h_scale = (ci / 64 == cj / 64) ? 1.0 : ((Rv == 64) ? 0.25 : 0.10);
+          double eff_noj = (Rv == 192 && (lam_v > 0.0 || alpha_v > 1.0 || lam_o > 0.0 || alpha_o > 1.0)) ? nj : noj;
           double s_nn = ni * nj * f_kern(dot_nn / (ni * nj)) * h_scale;
-          double s_no = ni * noj * f_kern(dot_no / (ni * noj)) * h_scale;
+          double s_no = ni * eff_noj * f_kern(dot_no / (ni * noj)) * h_scale;
           if (ci == cj) {
-            s_nn += 0.25 * ni * ni;
-            s_no += 0.25 * ni * noj;
+            s_nn += ridge_o_k * ni * ni;
+            s_no += ridge_o_k * ni * eff_noj;
           }
           cov[ci * D + cj] = s_nn;
           cov_cross[ci * D + cj] = s_no;
         }
       }
+      double mean_cov = 0.0;
+      for (size_t c = 0; c < D; c++) mean_cov += cov[c * D + c];
+      mean_cov /= double(D);
       if (blk >= o_min_blk)
       for (size_t r = 0; r < D; r++) {
         int8_t* orow = reinterpret_cast<int8_t*>(&es[i_oq].data[r * D]);
+        int r_nnz = 0;
+        for (size_t j = 0; j < D; j++) if (orow[j]) r_nnz++;
+        if (r_nnz == 0) continue;
+        double inv_alpha_o = 1.0;
+        if (alpha_o > 1.0) {
+          float sc_orig = bf16_val(o_sc_mut[r]);
+          uint16_t b_new = f32_to_bf16_4bit(float(sc_orig * alpha_o));
+          float sc_new = bf16_val(b_new);
+          if (sc_new > 0.0f && sc_orig > 0.0f) inv_alpha_o = double(sc_orig) / double(sc_new);
+          o_sc_mut[r] = b_new;
+        }
         std::vector<int> orig_w(D);
         for (size_t j = 0; j < D; j++) orig_w[j] = orow[j];
         std::vector<double> g(D, 0.0);
         for (size_t i = 0; i < D; i++) {
           double s_g = 0.0;
           for (size_t j = 0; j < D; j++)
-            s_g += (cov[i * D + j] - cov_cross[i * D + j]) * orig_w[j];
+            s_g += (cov[i * D + j] - inv_alpha_o * cov_cross[i * D + j]) * orig_w[j];
           g[i] = s_g;
         }
         auto snap_col = [&](size_t c, int vn_lo, int vn_hi) {
           int v = orow[c];
           double d_lo = vn_lo - v, d_hi = vn_hi - v, c_cc = cov[c * D + c];
-          int vn = (2.0 * d_hi * g[c] + d_hi * d_hi * c_cc <= 2.0 * d_lo * g[c] + d_lo * d_lo * c_cc) ? vn_hi : vn_lo;
+          double cost_hi = 2.0 * d_hi * g[c] + d_hi * d_hi * c_cc + lam_o * mean_cov * r_bits(vn_hi);
+          double cost_lo = 2.0 * d_lo * g[c] + d_lo * d_lo * c_cc + lam_o * mean_cov * r_bits(vn_lo);
+          int vn = (cost_hi <= cost_lo) ? vn_hi : vn_lo;
+          if (vn == 0 && v != 0 && r_nnz <= 1) vn = vn_hi;
+          if (vn == 0 && v != 0) r_nnz--;
           double dv = vn - v;
           orow[c] = int8_t(vn);
           const double* cov_c = &cov[c * D];
           for (size_t j = 0; j < D; j++) g[j] += dv * cov_c[j];
         };
-        std::vector<size_t> c1, c35;
+        std::vector<size_t> c1, c35, c247;
         for (size_t c = 0; c < D; c++) {
-          int a = std::abs(int(orow[c]));
+          int a = std::abs(orig_w[c]);
           if (a == 1) c1.push_back(c);
           else if (a == 3 || a == 5 || a == 6) c35.push_back(c);
+          else if (a == 2 || a == 4 || a == 7) c247.push_back(c);
         }
         auto cmp_c = [&](size_t a, size_t b) { return ch_imp[a] < ch_imp[b]; };
         std::sort(c1.begin(), c1.end(), cmp_c);
         std::sort(c35.begin(), c35.end(), cmp_c);
-        for (size_t c : c1) snap_col(c, 0, 2 * ((orow[c] > 0) ? 1 : -1));
+        std::sort(c247.begin(), c247.end(), cmp_c);
+        for (size_t c : c1) snap_col(c, 0, 2 * ((orig_w[c] > 0) ? 1 : -1));
         for (size_t c : c35) {
-          int s = (orow[c] > 0) ? 1 : -1, a = std::abs(int(orow[c]));
+          int s = (orig_w[c] > 0) ? 1 : -1, a = std::abs(orig_w[c]);
           int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
           snap_col(c, s * lo, s * hi);
         }
-        for (int pass = 0; pass < 4; pass++) {
-          for (size_t c : c1) {
-            int s = (orig_w[c] > 0) ? 1 : -1, v_cur = orow[c], v_alt = (v_cur == 0) ? (2 * s) : 0;
-            double d_alt = v_alt - v_cur;
-            if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * D + c] < -1e-12) {
-              orow[c] = int8_t(v_alt);
-              const double* cov_c = &cov[c * D];
-              for (size_t j = 0; j < D; j++) g[j] += d_alt * cov_c[j];
+        if (lam_o == 0.0 && alpha_o == 1.0) {
+          for (int pass = 0; pass < 4; pass++) {
+            for (size_t c : c1) {
+              int s = (orig_w[c] > 0) ? 1 : -1, v_cur = orow[c], v_alt = (v_cur == 0) ? (2 * s) : 0;
+              double d_alt = v_alt - v_cur;
+              if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * D + c] < -1e-12) {
+                orow[c] = int8_t(v_alt);
+                const double* cov_c = &cov[c * D];
+                for (size_t j = 0; j < D; j++) g[j] += d_alt * cov_c[j];
+              }
+            }
+            for (size_t c : c35) {
+              int s = (orig_w[c] > 0) ? 1 : -1, a = std::abs(orig_w[c]), v_cur = orow[c];
+              int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
+              int v_alt = (v_cur == s * lo) ? (s * hi) : (s * lo);
+              double d_alt = v_alt - v_cur;
+              if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * D + c] < -1e-12) {
+                orow[c] = int8_t(v_alt);
+                const double* cov_c = &cov[c * D];
+                for (size_t j = 0; j < D; j++) g[j] += d_alt * cov_c[j];
+              }
             }
           }
-          for (size_t c : c35) {
-            int s = (orig_w[c] > 0) ? 1 : -1, a = std::abs(orig_w[c]), v_cur = orow[c];
-            int lo = (a == 3) ? 2 : 4, hi = (a == 3) ? 4 : 7;
-            int v_alt = (v_cur == s * lo) ? (s * hi) : (s * lo);
-            double d_alt = v_alt - v_cur;
-            if (2.0 * d_alt * g[c] + d_alt * d_alt * cov[c * D + c] < -1e-12) {
-              orow[c] = int8_t(v_alt);
+        } else {
+          auto try_multi_o = [&](size_t c) {
+            int a = std::abs(orig_w[c]);
+            if (a == 0) return;
+            int s = (orig_w[c] > 0) ? 1 : -1, v_cur = orow[c];
+            int hi = (a <= 2) ? 2 : ((a <= 4) ? 4 : 7);
+            int lo_min = (min_lv_35 && a >= 5) ? 2 : ((min_lv_35 == 2 && a >= 3) ? 2 : 0);
+            const int levels[4] = {0, 2 * s, 4 * s, 7 * s};
+            int best_v = v_cur;
+            double best_cost = -1e-12;
+            double c_cc = cov[c * D + c];
+            for (int lv : levels) {
+              if (std::abs(lv) > hi || std::abs(lv) < lo_min || lv == v_cur) continue;
+              if (lv == 0 && v_cur != 0 && r_nnz <= 1) continue;
+              double d_alt = lv - v_cur;
+              double c_lv = 2.0 * d_alt * g[c] + d_alt * d_alt * c_cc + lam_o * mean_cov * (r_bits(lv) - r_bits(v_cur));
+              if (c_lv < best_cost) { best_cost = c_lv; best_v = lv; }
+            }
+            if (best_v != v_cur) {
+              if (best_v == 0 && v_cur != 0) r_nnz--;
+              else if (best_v != 0 && v_cur == 0) r_nnz++;
+              double d_alt = best_v - v_cur;
+              orow[c] = int8_t(best_v);
               const double* cov_c = &cov[c * D];
               for (size_t j = 0; j < D; j++) g[j] += d_alt * cov_c[j];
             }
+          };
+          for (int pass = 0; pass < 4; pass++) {
+            for (size_t c : c1) try_multi_o(c);
+            for (size_t c : c35) try_multi_o(c);
+            for (size_t c : c247) try_multi_o(c);
           }
         }
       }

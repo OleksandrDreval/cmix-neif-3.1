@@ -3,6 +3,7 @@
 // sections 3 and 4 of README.md and of the README of cmix-neif-1.0.
 #include "../../meld.h"
 #include "qmat_dense.h"
+#include "qmat_sparse.h"
 #include "../../cold_size.h"
 
 #include <immintrin.h>
@@ -412,29 +413,7 @@ __attribute__((noinline)) static int relu2q_phase2(const QDense& m, const float*
     _mm_storel_epi64(reinterpret_cast<__m128i*>(q_out + 8 * g),
                      _mm_packus_epi16(q16, q16));
   }
-  int nnz = 0;
-  const int nblk = m.rows_padded / 32;
-  for (int b = 0; b < nblk; b++) {
-    __m256i v = _mm256_load_si256(
-        reinterpret_cast<const __m256i*>(q_out + 32 * b));
-    uint32_t mz = static_cast<uint32_t>(_mm256_movemask_epi8(
-        _mm256_cmpeq_epi8(v, _mm256_setzero_si256())));
-    uint32_t mk = ~mz;
-    if (!mk) continue;
-    for (int k = 0; k < 4; k++) {
-      const uint32_t m8 = (mk >> (8 * k)) & 0xFF;
-      __m128i lut = _mm_loadl_epi64(
-          reinterpret_cast<const __m128i*>(g_bitpos.t[m8]));
-      __m128i i16 = _mm_add_epi16(
-          _mm_cvtepu8_epi16(lut),
-          _mm_set1_epi16(static_cast<short>(32 * b + 8 * k)));
-      _mm_storeu_si128(reinterpret_cast<__m128i*>(idx_out + nnz), i16);
-      nnz += __builtin_popcount(m8);
-    }
-  }
-  for (int r = m.rows_padded & ~31; r < m.rows_padded; r++)
-    if (q_out[r]) idx_out[nnz++] = static_cast<uint16_t>(r);
-  return nnz;
+  return qsparse_make_idx(q_out, m.rows_padded, idx_out);
 }
 
 // Phase 2 of qgemv_quant_bias for one row (the same code).
