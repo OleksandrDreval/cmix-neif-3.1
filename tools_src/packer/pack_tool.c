@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <stdint.h>
 #include "cm_core.h"
 #include "x86t.h"
 #define BOOT_ENCODER
@@ -63,13 +64,17 @@ int main(int c, char **v) {
   unsigned char *g_out = malloc(CM_MAXBUF + 65536);
   if (c < 3) { fprintf(stderr, "boot|xform|compress|pack|cut|unpack|eval\n"); return 2; }
   if (!strcmp(v[1], "boot")) {
-    size_t n, m; unsigned char *b = rd(v[2], &n), *o = malloc(2 * n + 64);
+    size_t n, m, i; unsigned char *b = rd(v[2], &n), *o = malloc(2 * n + 64), *k = malloc(n + 64);
     m = boot_compress(b, n, o);
+    boot_decompress(o, k, n);
+    for (i = 0; i < n; ++i) if (k[i] != b[i]) { fprintf(stderr, "boot round trip FAILED at %zu\n", i); return 4; }
     wr(v[3], o, m); fprintf(stderr, "boot stage2 %zu -> %zu\n", n, m); return 0;
   }
   if (!strcmp(v[1], "xform")) {
-    size_t n; unsigned char *b = rd(v[2], &n);
-    xform(b, n, +1);
+    size_t n; unsigned char *b = rd(v[2], &n), *r = malloc(n);
+    memcpy(r, b, n); xform(b, n, +1);
+    { unsigned char *k = malloc(n); memcpy(k, b, n); xform(k, n, -1);
+      if (memcmp(k, r, n)) { fprintf(stderr, "xform not invertible\n"); return 4; } }
     wr(v[3], b, n); fprintf(stderr, "xform Nf=%zu ranges=%d\n", n, cm_ncr); return 0;
   }
   if (!strcmp(v[1], "compress")) {
@@ -110,8 +115,12 @@ int main(int c, char **v) {
   if (!strcmp(v[1], "unpack")) {
     size_t n, h, off, clen, dlen, ilen, split; unsigned char *b = rd(v[2], &n);
     h = findh(b, n); off = ld(b + h); clen = ld(b + h + 4); dlen = ld(b + h + 8); ilen = ld(b + h + 12); split = ld(b + h + 16);
+    if (h + 24 > n || (uint64_t)off + clen > (uint64_t)n || dlen > CM_MAXBUF || ilen > CM_MAXBUF) {
+      fprintf(stderr, "unpack header or length invalid: n=%zu h=%zu off=%zu clen=%zu dlen=%zu\n", n, h, off, clen, dlen);
+      return 2;
+    }
     if (c > 5) warm(v[4], v[5]);
-    if (!cm_decompress(b + off, clen, g_out, dlen)) return 5;
+    if (!cm_decompress(b + off, clen, g_out, dlen)) { fprintf(stderr, "decomp failed\n"); return 5; }
     xform(g_out, dlen, -1);
     if (ilen > dlen) memset(g_out + dlen, 0, ilen - dlen);
     wr(v[3], g_out, ilen);

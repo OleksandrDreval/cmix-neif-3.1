@@ -77,7 +77,13 @@
 //       by reading it back
 //   tf1_np_codec dump <container> <out.raw>
 //       the decoded tensors, raw in file order (FX2TFW01 layout)
+#if __has_include("../../../../../src/tf1/weights_io_compressed.cpp")
+#include "../../../../../src/tf1/weights_io_compressed.cpp"
+#elif __has_include("../src/tf1/weights_io_compressed.cpp")
 #include "../src/tf1/weights_io_compressed.cpp"
+#else
+#include "src/tf1/weights_io_compressed.cpp"
+#endif
 
 #include <algorithm>
 #include <cstdarg>
@@ -477,6 +483,10 @@ void encode_values(BinEncoder& E, ValModels& vm, const Ent& e, uint8_t enc,
           int v = row[k];
           uint64_t a = uint64_t(v < 0 ? -v : v);
           if (enc == ENC_INT4W) {
+            if (a != 0 && a != 2 && a != 4 && a != 7) {
+              fprintf(stderr, "tf1_np_codec: invalid ENC_INT4W magnitude %u (not in {0,2,4,7})\n", unsigned(a));
+              std::exit(1);
+            }
             uint64_t M = (T * 65536 + 16 * 65536) / (N + 16);
             if (M < 1) M = 1;
             uint64_t rr = (rs * 65536 + 6 * M) / (k + 6);

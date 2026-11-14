@@ -622,6 +622,7 @@ WeightsFile LoadId(Reader& r, const char* path) {
 
     switch (encoding) {
       case ENC_INT4W: {
+        if (rows > sizeof(m->last_zrow)) msg_stop(190);
         std::memset(m->last_zrow, 0, rows);
         m->last_zrow_n = rows;
         int8_t* out = reinterpret_cast<int8_t*>(t.data);

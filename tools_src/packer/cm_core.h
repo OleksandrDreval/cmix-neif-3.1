@@ -692,8 +692,9 @@ typedef struct {
   uint32_t x1, x2, x;
   unsigned char *out; size_t outn;
   const unsigned char *in; size_t inn, inpos;
+  int err;
 } cm_ac;
-static void cm_ac_enc_init(cm_ac *a, unsigned char *out) { a->x1 = 0; a->x2 = 0xffffffffu; a->out = out; a->outn = 0; }
+static void cm_ac_enc_init(cm_ac *a, unsigned char *out) { a->x1 = 0; a->x2 = 0xffffffffu; a->out = out; a->outn = 0; a->err = 0; }
 static void cm_ac_encode(cm_ac *a, int bit, int p12) {
   uint32_t xmid = a->x1 + (uint32_t)(((uint64_t)(a->x2 - a->x1) * (uint32_t)p12) >> (PV(p16) ? 16 : 12));
   if (bit) a->x2 = xmid; else a->x1 = xmid + 1;
@@ -707,9 +708,13 @@ static size_t cm_ac_enc_flush(cm_ac *a) {
   for (i = 24; i >= 0; i -= 8) a->out[a->outn++] = (unsigned char)(a->x1 >> i);
   return a->outn;
 }
-static int cm_ac_inbyte(cm_ac *a) { return a->inpos < a->inn ? a->in[a->inpos++] : 0; }
+static int cm_ac_inbyte(cm_ac *a) {
+  if (a->inpos < a->inn) return a->in[a->inpos++];
+  a->err = 1;
+  return 0;
+}
 static void cm_ac_dec_init(cm_ac *a, const unsigned char *in, size_t inn) {
-  int i; a->x1 = 0; a->x2 = 0xffffffffu; a->in = in; a->inn = inn; a->inpos = 0; a->x = 0;
+  int i; a->x1 = 0; a->x2 = 0xffffffffu; a->in = in; a->inn = inn; a->inpos = 0; a->x = 0; a->err = 0;
   for (i = 0; i < 4; ++i) a->x = (a->x << 8) | (uint32_t)cm_ac_inbyte(a);
 }
 static int cm_ac_decode(cm_ac *a, int p12) {
@@ -741,9 +746,10 @@ static size_t cm_compress_k(const unsigned char *src, size_t n, unsigned char *o
 static size_t cm_compress(const unsigned char *src, size_t n, unsigned char *out) {
   return cm_compress_k(src, n, out, n, 0);
 }
-/* Decodes n bytes; returns the number of input bytes consumed (K), 0 = no memory. */
+/* Decodes n bytes; returns the number of input bytes consumed (K), 0 = no memory or truncation error. */
 static size_t cm_decompress(const unsigned char *src, size_t srcn, unsigned char *out, size_t n) {
   cm_ac a; size_t i; int b;
+  if (!src || srcn < 4 || !out) return 0;
   if (!cm_model_init()) return 0;
   if (CM_WARM_P) cm_warm();
   cm_ac_dec_init(&a, src, srcn);
@@ -751,7 +757,9 @@ static size_t cm_decompress(const unsigned char *src, size_t srcn, unsigned char
     int byte = 1;
     for (b = 0; b < 8; ++b) { int bit = cm_ac_decode(&a, cm_predict()); cm_update(bit); byte = (byte << 1) | bit; }
     out[i] = (unsigned char)byte;
+    if (a.err) return 0;
   }
+  if (a.err) return 0;
   return a.inpos ? a.inpos : 1;
 }
 #endif /* CM_CORE_H */

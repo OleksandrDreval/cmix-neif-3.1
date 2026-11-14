@@ -30,6 +30,9 @@ BITL_CXXFLAGS := -O3 -m64 -std=c++17 -march=x86-64-v3 -mtune=znver2 -fno-pie -fn
 BITL_DEP := bitl
 BITL_OBJ := bit_head.o
 BITL_SRC := src/bit_head.cpp
+ifeq ($(origin CC),default)
+CC := clang++-18
+endif
 CC ?= clang++-18
 CFLAGS_DEFINES ?= -DSEED=923 -DUPDATE_LIMIT=3000
 CPPFLAGS_PART-THAT-CAN-BE-SLOW := -DSEED=923 -DUPDATE_LIMIT=3000 -DNDEBUG -m64 -Wall -std=c++17 -ffp-model=fast -mrecip=none -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables -fno-threadsafe-statics -Wno-unknown-escape-sequence -Wno-unused-variable -Wno-unneeded-internal-declaration -Wno-unused-but-set-variable -Wno-format -march=x86-64-v3 -mtune=znver2 -Os -fdata-sections -ffunction-sections -fno-unroll-loops -fno-pie -fmerge-all-constants -fno-direct-access-external-data -fno-rtti -fvisibility=hidden -Oz -fno-c++-static-destructors
@@ -152,6 +155,9 @@ cmix: fast slow cold $(RT_COMPAT_OBJ) $(DETNUM_DEP) $(B6_HINTS_DEP) $(BITL_DEP) 
 	$(CC) $(LFLAGS) $(LINK_ORDER) -Wl,-Map=cmix.map bit-context.o bracket-context.o bracket.o byte-mixer.o byte-model.o combined-context.o context-hash.o context-manager.o decoder.o dictionary.o direct-hash.o direct.o encoder.o indirect-hash.o indirect.o interval-hash.o interval.o match.o grammar-match.o mixer-input.o mixer.o nonstationary.o fxcmv1.o ppmd.o predictor.o preprocessor.o r1_reorder_transform.o run-map.o runner.o sigmoid.o sparse.o sse.o $(RT_COMPAT_OBJ) $(DETNUM_OBJ) $(B6_HINTS_OBJ) $(BITL_OBJ) $(TF1_OBJ) $(WORDLBL_OBJ) $(ADEPTHDET_OBJ) $(ALLOC2_OBJ) $(MXSDET_OBJ) $(MXPDET_OBJ) $(STRIP_FLAG) -o cmix
 	rm -f *.o
 
+eval_ce: tools_src/eval_ce.cpp src/tf1/opt/model_opt.cpp src/tf1/opt/arena_build.cpp src/tf1/opt/attn.cpp src/tf1/opt/glue.cpp src/tf1/opt/kda.cpp src/tf1/opt/qmat_dense.cpp src/tf1/opt/qmat_sparse.cpp src/tf1/kernels.cpp src/tf1/weights_io.cpp src/tf1/weights_io_compressed.cpp
+	$(CC) $(TF1_CXXFLAGS) -no-pie -I. tools_src/eval_ce.cpp src/tf1/opt/model_opt.cpp src/tf1/opt/arena_build.cpp src/tf1/opt/attn.cpp src/tf1/opt/glue.cpp src/tf1/opt/kda.cpp src/tf1/opt/qmat_dense.cpp src/tf1/opt/qmat_sparse.cpp src/tf1/kernels.cpp src/tf1/weights_io.cpp src/tf1/weights_io_compressed.cpp -o eval_ce
+
 # sstrip drops the section header table and .shstrtab from the linked ELF
 # before packing (-484 B packed, -968 B in S).  The build uses
 # `llvm-objcopy --strip-sections` (same result) and falls back to this program
@@ -166,10 +172,11 @@ clean:
 	rm -f tf1_z3
 	rm -f remap
 	rm -f sstrip
+	rm -f eval_ce
 
 all: cmix
 
-.PHONY: clean all prof_gen prof_use detnum s26vec opt1vec b6hints bitl tf1 cmix_aux fast slow cold
+.PHONY: clean all prof_gen prof_use detnum s26vec opt1vec b6hints bitl tf1 cmix_aux fast slow cold eval_ce
 
 
 # The BUILD HELPER.  It is compiled from the same sources with AUX_BUILD=1 and

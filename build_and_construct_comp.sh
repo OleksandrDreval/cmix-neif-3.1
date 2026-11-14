@@ -30,7 +30,7 @@ PAK_SSTRIP="1"
 PAK_PACKER="cmstub"
 
 # building with PGO
-if [[ "1" == "1" && -s ./pgo_data/default.profdata ]]; then
+if [[ "${REGEN_PGO:-0}" != "1" && -s ./pgo_data/default.profdata ]]; then
   echo "Reusing existing PGO profile ./pgo_data/default.profdata"
 else
   rm -rf pgo_data
@@ -250,5 +250,5 @@ python3 -c 'import struct, sys; open("header.dat", "wb").write(struct.pack("<3i"
   "$(wc -c < ./$SELFEXTRACT_BLOCK)" "$(wc -c < ./comp_order)" "$WEIGHTS_SIZE"
 
 # merging the above files and setting permissions for the final executable file
-cat ./cmix_orig ./$SELFEXTRACT_BLOCK ./comp_order $WEIGHTS_PATH header.dat > ./cmix
+cat ./cmix_orig ./$SELFEXTRACT_BLOCK ./comp_order $WEIGHTS_PATH header.dat > ./cmix.tmp && mv -f ./cmix.tmp ./cmix
 chmod +x ./cmix
